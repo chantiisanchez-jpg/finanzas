@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Nombre</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Nombre">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#F3F5F0">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" href="favicon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #F3F5F0; overscroll-behavior: none; }
+    /* La app ocupa la pantalla menos la muesca y la barra de inicio del iPhone. */
+    #app {
+      position: fixed;
+      top: env(safe-area-inset-top); bottom: env(safe-area-inset-bottom);
+      left: env(safe-area-inset-left); right: env(safe-area-inset-right);
+    }
+    #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font: 16px -apple-system, system-ui, sans-serif; color: #1D6247; gap: 16px; }
+    #loading img { width: 88px; height: 88px; border-radius: 20px; }
+    #loading p { margin: 0 32px; text-align: center; }
+  </style>
+  <script src="gestor-web.js"></script>
+</head>
+<body>
+  <div id="loading"><img src="icon-192.png" alt=""><p>Cargando…</p></div>
+  <div id="app"></div>
+  <script>
+    // Kotlin/Wasm necesita Safari 18.2 o más nuevo (iOS 18.2+).
+    if (typeof WebAssembly !== "object" || !WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 95, 1, 120, 0]))) {
+      document.querySelector("#loading p").textContent = "Esta app necesita iOS 18.2 o más nuevo. Actualizá el iPhone desde Ajustes → General → Actualización de software.";
+    } else {
+      const s = document.createElement("script");
+      s.src = "gestor.js";
+      document.body.appendChild(s);
+    }
+  </script>
+</body>
+</html>
