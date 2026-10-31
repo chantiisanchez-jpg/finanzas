@@ -77,6 +77,53 @@ window.gestorWeb = {
   },
 };
 
+// ---------- Teclado en Safari de iPhone ----------
+// Compose activa su campo de texto oculto un instante después del toque, y Safari solo abre el teclado
+// si el foco se pide durante el toque mismo. Por eso, al tocar donde hay un campo de texto, se enfoca
+// en ese mismo momento un campo propio: el teclado se abre y Compose después le pasa el foco al suyo.
+const keyboardTargets = new Map();
+window.gestorWeb.setKeyboardTarget = (id, left, top, right, bottom) => keyboardTargets.set(id, [left, top, right, bottom]);
+window.gestorWeb.removeKeyboardTarget = (id) => keyboardTargets.delete(id);
+
+let keyboardCatcher = null;
+function catcher() {
+  if (!keyboardCatcher) {
+    keyboardCatcher = document.createElement("input");
+    keyboardCatcher.type = "text";
+    keyboardCatcher.setAttribute("aria-hidden", "true");
+    keyboardCatcher.setAttribute("autocomplete", "off");
+    // 16px evita que Safari haga zoom al enfocar; transparente y fuera del camino.
+    keyboardCatcher.style.cssText = "position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0;";
+    document.body.appendChild(keyboardCatcher);
+  }
+  return keyboardCatcher;
+}
+
+function touchOverTextField(touch) {
+  const app = document.getElementById("app");
+  if (!app) return false;
+  const box = app.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const x = (touch.clientX - box.left) * dpr;
+  const y = (touch.clientY - box.top) * dpr;
+  for (const [l, t, r, b] of keyboardTargets.values()) {
+    if (x >= l && x <= r && y >= t && y <= b) return true;
+  }
+  return false;
+}
+
+document.addEventListener("touchend", (e) => {
+  const touch = e.changedTouches && e.changedTouches[0];
+  if (!touch || !touchOverTextField(touch)) return;
+  const active = document.activeElement;
+  if (active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT") && active !== keyboardCatcher) return;
+  const c = catcher();
+  c.value = "";
+  c.focus({ preventScroll: true });
+  // Si Compose no tomó el foco (no era un campo editable), se cierra el teclado.
+  setTimeout(() => { if (document.activeElement === c) c.blur(); }, 700);
+}, { capture: true, passive: true });
+
 /** Arma el texto de la página renglón por renglón, ordenado por posición. */
 function joinLines(pieces) {
   pieces.sort((a, b) => a.top - b.top || a.x - b.x);
