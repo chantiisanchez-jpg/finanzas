@@ -1,5 +1,8 @@
 // Funciones del navegador que usa la app (desde Kotlin, en WebPlatform.kt y PdfWordExtractor.web.kt).
 window.gestorWeb = {
+  /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
+  version: "31/10 22:01",
+
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
     document.documentElement.style.background = css;
@@ -77,53 +80,6 @@ window.gestorWeb = {
   },
 };
 
-// ---------- Teclado en Safari de iPhone ----------
-// Compose activa su campo de texto oculto un instante después del toque, y Safari solo abre el teclado
-// si el foco se pide durante el toque mismo. Por eso, al tocar donde hay un campo de texto, se enfoca
-// en ese mismo momento un campo propio: el teclado se abre y Compose después le pasa el foco al suyo.
-const keyboardTargets = new Map();
-window.gestorWeb.setKeyboardTarget = (id, left, top, right, bottom) => keyboardTargets.set(id, [left, top, right, bottom]);
-window.gestorWeb.removeKeyboardTarget = (id) => keyboardTargets.delete(id);
-
-let keyboardCatcher = null;
-function catcher() {
-  if (!keyboardCatcher) {
-    keyboardCatcher = document.createElement("input");
-    keyboardCatcher.type = "text";
-    keyboardCatcher.setAttribute("aria-hidden", "true");
-    keyboardCatcher.setAttribute("autocomplete", "off");
-    // 16px evita que Safari haga zoom al enfocar; transparente y fuera del camino.
-    keyboardCatcher.style.cssText = "position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;font-size:16px;border:0;padding:0;";
-    document.body.appendChild(keyboardCatcher);
-  }
-  return keyboardCatcher;
-}
-
-function touchOverTextField(touch) {
-  const app = document.getElementById("app");
-  if (!app) return false;
-  const box = app.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const x = (touch.clientX - box.left) * dpr;
-  const y = (touch.clientY - box.top) * dpr;
-  for (const [l, t, r, b] of keyboardTargets.values()) {
-    if (x >= l && x <= r && y >= t && y <= b) return true;
-  }
-  return false;
-}
-
-document.addEventListener("touchend", (e) => {
-  const touch = e.changedTouches && e.changedTouches[0];
-  if (!touch || !touchOverTextField(touch)) return;
-  const active = document.activeElement;
-  if (active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT") && active !== keyboardCatcher) return;
-  const c = catcher();
-  c.value = "";
-  c.focus({ preventScroll: true });
-  // Si Compose no tomó el foco (no era un campo editable), se cierra el teclado.
-  setTimeout(() => { if (document.activeElement === c) c.blur(); }, 700);
-}, { capture: true, passive: true });
-
 /** Arma el texto de la página renglón por renglón, ordenado por posición. */
 function joinLines(pieces) {
   pieces.sort((a, b) => a.top - b.top || a.x - b.x);
@@ -152,6 +108,154 @@ function loadPdfJs() {
     });
   }
   return pdfJsPromise;
+}
+
+// ---------- Campos de texto nativos en Safari de iPhone ----------
+// En Safari de iOS 27 el campo de texto de la app (dibujado en el lienzo) no logra abrir el teclado.
+// Al tocar un campo, se pone encima un <input> común del navegador, que Safari sí abre en el mismo
+// toque; lo que se escribe se le pasa a la app. Fuera de iPhone/iPad no se usa.
+const ES_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const campos = new Map(); // id → { onInput, value, kind, rect }  (kind: 0 texto, 1 decimal, 2 monto grande)
+let editor = null; // { id, input }
+
+Object.assign(window.gestorWeb, {
+  fieldRegister(id, onInput) { campos.set(id, { onInput, value: "", kind: 0, rect: null }); },
+  fieldUnregister(id) {
+    campos.delete(id);
+    if (editor && editor.id === id) cerrarEditor();
+  },
+  fieldValue(id, value, kind) {
+    const c = campos.get(id);
+    if (!c) return;
+    c.value = value;
+    c.kind = kind;
+    if (editor && editor.id === id && editor.input.value !== value) editor.input.value = value;
+  },
+  fieldRect(id, left, top, right, bottom) {
+    const c = campos.get(id);
+    if (!c) return;
+    c.rect = [left, top, right, bottom];
+    if (editor && editor.id === id) ubicar(editor.input, c.rect);
+  },
+});
+
+/** Posición en la página (px CSS) de un rectángulo del lienzo (px del lienzo). */
+function rectEnPagina(rect) {
+  const box = document.getElementById("app").getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  return { left: box.left + rect[0] / dpr, top: box.top + rect[1] / dpr, width: (rect[2] - rect[0]) / dpr, height: (rect[3] - rect[1]) / dpr };
+}
+
+function ubicar(input, rect) {
+  const r = rectEnPagina(rect);
+  Object.assign(input.style, { left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
+}
+
+function campoEn(x, y) {
+  const app = document.getElementById("app");
+  if (!app) return null;
+  const box = app.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const px = (x - box.left) * dpr, py = (y - box.top) * dpr;
+  for (const [id, c] of campos) {
+    const r = c.rect;
+    if (r && px >= r[0] && px <= r[2] && py >= r[1] && py <= r[3]) return id;
+  }
+  return null;
+}
+
+function temaOscuro() {
+  const m = getComputedStyle(document.body).backgroundColor.match(/\d+/g);
+  if (!m) return false;
+  const [r, g, b] = m.map(Number);
+  return 0.299 * r + 0.587 * g + 0.114 * b < 128;
+}
+
+function abrirEditor(id) {
+  cerrarEditor();
+  const c = campos.get(id);
+  if (!c || !c.rect) return;
+  const oscuro = temaOscuro();
+  const input = document.createElement("input");
+  input.type = "text";
+  input.inputMode = c.kind === 0 ? "text" : "decimal";
+  input.autocomplete = "off";
+  input.setAttribute("autocorrect", c.kind === 0 ? "on" : "off");
+  input.setAttribute("autocapitalize", c.kind === 0 ? "sentences" : "off");
+  input.value = c.value;
+  input.style.cssText = [
+    "position:fixed", "z-index:10", "box-sizing:border-box", "margin:0", "outline:none",
+    "border-radius:12px", "padding:0 16px", "-webkit-appearance:none",
+    "font-family:-apple-system,system-ui,sans-serif",
+    c.kind === 2 ? "font-size:34px;font-weight:700;text-align:center" : "font-size:17px",
+    oscuro ? "background:#1F2621;color:#ECF1EA;border:2px solid #C5F25A" : "background:#FFFFFF;color:#101410;border:2px solid #1D6247",
+  ].join(";");
+  ubicar(input, c.rect);
+  input.addEventListener("input", () => {
+    const cur = campos.get(id);
+    if (!cur) return;
+    cur.value = input.value;
+    cur.onInput(input.value);
+  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
+  input.addEventListener("blur", () => setTimeout(() => { if (editor && editor.input === input) cerrarEditor(); }, 0));
+  document.body.appendChild(input);
+  editor = { id, input };
+  input.focus();
+  try { input.setSelectionRange(input.value.length, input.value.length); } catch (e) {}
+}
+
+function cerrarEditor() {
+  if (!editor) return;
+  const e = editor;
+  editor = null;
+  e.input.remove();
+}
+
+/** La app no recibe el final del toque sobre un campo: se le avisa que se canceló, así no lo procesa. */
+function cancelarParaLaApp(e, tipo) {
+  // El lienzo de la app está dentro de un shadow DOM: el aviso va al elemento real, no al contenedor.
+  const destino = (e.composedPath && e.composedPath()[0]) || e.target;
+  try {
+    if (tipo === "touch") {
+      destino.dispatchEvent(new TouchEvent("touchcancel", {
+        bubbles: true, cancelable: true, changedTouches: Array.from(e.changedTouches), touches: [], targetTouches: [],
+      }));
+    } else {
+      destino.dispatchEvent(new PointerEvent("pointercancel", {
+        bubbles: true, pointerId: e.pointerId, pointerType: e.pointerType, clientX: e.clientX, clientY: e.clientY, isPrimary: e.isPrimary,
+      }));
+    }
+  } catch (err) {}
+}
+
+if (ES_IOS) {
+  let inicio = null;
+  const esToque = (x, y) => inicio && Math.hypot(x - inicio.x, y - inicio.y) <= 10;
+  window.addEventListener("touchstart", (e) => {
+    const t = e.changedTouches[0];
+    inicio = t ? { x: t.clientX, y: t.clientY } : null;
+  }, { capture: true, passive: true });
+  window.addEventListener("pointerup", (e) => {
+    if (e.pointerType !== "touch" || (editor && e.target === editor.input)) return;
+    if (!esToque(e.clientX, e.clientY) || campoEn(e.clientX, e.clientY) === null) return;
+    e.stopImmediatePropagation();
+    cancelarParaLaApp(e, "pointer");
+  }, { capture: true });
+  window.addEventListener("touchend", (e) => {
+    const t = e.changedTouches[0];
+    if (!t || (editor && e.target === editor.input)) return;
+    const id = esToque(t.clientX, t.clientY) ? campoEn(t.clientX, t.clientY) : null;
+    if (id === null) {
+      // Tocar afuera cierra el teclado.
+      if (editor && esToque(t.clientX, t.clientY)) editor.input.blur();
+      return;
+    }
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    cancelarParaLaApp(e, "touch");
+    abrirEditor(id);
+  }, { capture: true, passive: false });
 }
 
 // Guarda la app en el teléfono para que abra aunque no haya internet.
