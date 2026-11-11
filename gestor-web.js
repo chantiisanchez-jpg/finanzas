@@ -1,7 +1,7 @@
 // Funciones del navegador que usa la app (desde Kotlin, en WebPlatform.kt y PdfWordExtractor.web.kt).
 window.gestorWeb = {
   /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
-  version: "31/10 22:01",
+  version: "11/11 14:10",
 
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
@@ -109,6 +109,76 @@ function loadPdfJs() {
   }
   return pdfJsPromise;
 }
+
+// ---------- Lectura de tickets (Tesseract, en el navegador) ----------
+// La foto no se sube a ningún lado: Tesseract lee el texto en el propio teléfono. La primera vez baja
+// el idioma español (unos MB) y queda guardado.
+let tesseractPromise = null;
+function loadTesseract() {
+  if (!tesseractPromise) {
+    tesseractPromise = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+      s.onload = () => resolve(window.Tesseract);
+      s.onerror = () => { tesseractPromise = null; reject(new Error("Sin conexión: la primera lectura de un ticket necesita internet.")); };
+      document.head.appendChild(s);
+    });
+  }
+  return tesseractPromise;
+}
+
+/** Achica la foto (lado mayor ≤ 2000 px), la pasa a grises y le sube el contraste: Tesseract lee mejor. */
+function prepararFoto(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 2000 / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const p = data.data;
+      for (let i = 0; i < p.length; i += 4) {
+        const g = 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
+        const v = Math.max(0, Math.min(255, (g - 128) * 1.5 + 128));
+        p[i] = p[i + 1] = p[i + 2] = v;
+      }
+      ctx.putImageData(data, 0, 0);
+      URL.revokeObjectURL(url);
+      resolve(canvas);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("No se pudo abrir la foto.")); };
+    img.src = url;
+  });
+}
+
+/** Abre la cámara (o las fotos) y devuelve las palabras leídas en JSON, o null si se canceló. */
+window.gestorWeb.scanReceipt = (camera, onStart) => new Promise((resolve, reject) => {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  if (camera) input.setAttribute("capture", "environment");
+  input.style.display = "none";
+  document.body.appendChild(input);
+  input.addEventListener("cancel", () => { input.remove(); resolve(null); });
+  input.addEventListener("change", async () => {
+    const file = input.files && input.files[0];
+    input.remove();
+    if (!file) return resolve(null);
+    onStart();
+    try {
+      const [Tesseract, canvas] = await Promise.all([loadTesseract(), prepararFoto(file)]);
+      const { data } = await Tesseract.recognize(canvas, "spa");
+      resolve(JSON.stringify((data.words || []).map((w) => ({ t: w.text, x0: w.bbox.x0, x1: w.bbox.x1, top: w.bbox.y0, bottom: w.bbox.y1 }))));
+    } catch (e) {
+      reject(new Error(e && e.message ? e.message : "No se pudo leer la foto."));
+    }
+  });
+  input.click();
+});
 
 // ---------- Campos de texto nativos en Safari de iPhone ----------
 // En Safari de iOS 27 el campo de texto de la app (dibujado en el lienzo) no logra abrir el teclado.
