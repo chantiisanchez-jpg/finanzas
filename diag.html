@@ -15,6 +15,8 @@
 <body>
 <!-- Página simple (sin la app) para ver qué pasa en un iPhone: no borra los movimientos guardados. -->
 <h1>Diagnóstico de la app</h1>
+<button id="auto" style="background:#1D6247;color:#fff;font-weight:600">Prueba automática (2 minutos)</button>
+<pre id="tabla" style="font-size:13px">Tocá el botón de arriba y dejá el iPhone quieto, con la pantalla prendida, hasta que diga "Terminado".</pre>
 <pre id="info">Revisando…</pre>
 <button id="limpiar">Borrar copias guardadas de la app (no borra tus datos)</button>
 <button id="probar">Probar la app acá abajo</button>
@@ -100,6 +102,36 @@ function copiarViejo(texto) {
   try { document.execCommand("copy"); } catch (e) {}
   t.remove();
 }
+
+// Prueba automática: abre la app con cada configuración gráfica y mide si se ve algo.
+var CONFIGS = ["0 normal", "1 como diagnóstico", "2 sin transparencia", "3 conservar dibujo", "4 sin suavizado",
+  "5 bajo consumo", "6 resolución baja", "7 WebGL 1", "8 sin transp.+conservar"];
+document.getElementById("auto").onclick = function () {
+  var tabla = document.getElementById("tabla");
+  var filas = [];
+  var marco = document.getElementById("marco");
+  var i = 0;
+  function mostrar(extra) {
+    tabla.textContent = "config | se ve (colores) | nullptr | cuadros | dibujos\n" + filas.join("\n") + (extra ? "\n" + extra : "");
+  }
+  function siguiente() {
+    if (i >= CONFIGS.length) { marco.innerHTML = ""; mostrar("Terminado. Sacá una captura de esta tabla."); return; }
+    var n = i;
+    mostrar("Probando " + CONFIGS[n] + "…");
+    marco.innerHTML = "";
+    var f = document.createElement("iframe");
+    f.src = "index.html?cfg=" + n + "&t=" + Date.now();
+    marco.appendChild(f);
+    setTimeout(function () {
+      var p = null;
+      try { p = f.contentWindow.__prueba; } catch (e) {}
+      filas.push(CONFIGS[n] + " | " + (p ? p.colores + " | " + p.nullptr + " | " + p.cuadros + " | " + p.dibujos + (p.primerError && !/nullptr/.test(p.primerError) ? " | " + p.primerError : "") : "sin datos"));
+      i++;
+      siguiente();
+    }, 13000);
+  }
+  siguiente();
+};
 
 // Carga la app en un recuadro y, a los 12 segundos, cuenta qué pasó adentro.
 document.getElementById("probar").onclick = function () {

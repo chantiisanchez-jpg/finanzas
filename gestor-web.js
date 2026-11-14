@@ -1,7 +1,7 @@
 // Funciones del navegador que usa la app (desde Kotlin, en WebPlatform.kt y PdfWordExtractor.web.kt).
 window.gestorWeb = {
   /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
-  version: "14/11 20:27",
+  version: "14/11 20:46",
 
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
@@ -339,6 +339,70 @@ if (ES_IOS) {
     abrirEditor(id);
   }, { capture: true, passive: false });
 }
+
+// ---------- Prueba de configuraciones gráficas (abrir con ?cfg=N; la usa diag.html) ----------
+// Cada N cambia una opción del WebGL antes de que arranque la app y mide si de verdad se ve algo:
+// copia el lienzo a una imagen chica justo después de dibujar y cuenta los colores distintos.
+(function pruebaGrafica() {
+  const m = /[?&]cfg=(\d+)/.exec(location.search);
+  if (!m) return;
+  const cfg = Number(m[1]);
+  const r = { cfg, nullptr: 0, errores: 0, primerError: "", cuadros: 0, dibujos: 0, colores: 0, contextos: "" };
+  window.__prueba = r;
+  window.addEventListener("error", (e) => {
+    r.errores++;
+    if (/nullptr/.test(e.message)) r.nullptr++;
+    if (!r.primerError) r.primerError = String(e.message).slice(0, 120);
+  });
+  if (cfg === 6) Object.defineProperty(window, "devicePixelRatio", { get: () => 1 });
+  let lienzo = null;
+  const gc = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (tipo, attrs) {
+    let a = Object.assign({}, attrs || {});
+    if (/webgl/.test(tipo)) {
+      if (cfg === 7 && tipo === "webgl2") return null;
+      if (cfg === 2 || cfg === 8) a.alpha = false;
+      if (cfg === 3 || cfg === 8) a.preserveDrawingBuffer = true;
+      if (cfg === 4) { a.antialias = false; a.depth = false; }
+      if (cfg === 5) a.powerPreference = "low-power";
+    }
+    const c = gc.call(this, tipo, a);
+    if (/webgl/.test(tipo) && c) { lienzo = this; r.contextos = tipo; }
+    return c;
+  };
+  for (const P of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
+    if (!P) continue;
+    for (const f of ["drawElements", "drawArrays"]) {
+      const o = P.prototype[f];
+      P.prototype[f] = function () { r.dibujos++; return o.apply(this, arguments); };
+    }
+    if (cfg === 1) {
+      // Igual que el modo diagnóstico: envuelve las consultas (sin cambiar lo que devuelven).
+      for (const f of ["getParameter", "getExtension", "getSupportedExtensions", "checkFramebufferStatus", "getShaderPrecisionFormat", "getContextAttributes", "getError"]) {
+        const o = P.prototype[f];
+        P.prototype[f] = function () { return o.apply(this, arguments); };
+      }
+    }
+  }
+  const muestra = document.createElement("canvas");
+  muestra.width = muestra.height = 24;
+  const m2d = muestra.getContext("2d");
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (cb) => raf((t) => {
+    cb(t);
+    r.cuadros++;
+    if (lienzo && r.cuadros % 5 === 0) {
+      try {
+        m2d.clearRect(0, 0, 24, 24);
+        m2d.drawImage(lienzo, 0, 0, 24, 24);
+        const px = m2d.getImageData(0, 0, 24, 24).data;
+        const set = new Set();
+        for (let i = 0; i < px.length; i += 4) set.add((px[i] >> 4) + "," + (px[i + 1] >> 4) + "," + (px[i + 2] >> 4) + "," + (px[i + 3] >> 4));
+        r.colores = Math.max(r.colores, set.size);
+      } catch (e) { r.primerError = r.primerError || "muestra: " + e.message; }
+    }
+  });
+})();
 
 // ---------- Diagnóstico (abrir con ?diag en la dirección) ----------
 // Muestra en pantalla, encima de la app, los errores y si el lienzo está dibujando. Sirve para ver qué
