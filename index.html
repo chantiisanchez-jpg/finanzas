@@ -32,18 +32,22 @@
     window.addEventListener("unhandledrejection", function (e) { window.__errores.push("PROMESA " + (e.reason && (e.reason.stack || e.reason.message) || e.reason)); });
   </script>
   <!-- "?v=": cada versión publicada tiene su propia dirección, así el teléfono no usa una copia vieja. -->
-  <script src="gestor-web.js?v=202611141810"></script>
+  <script src="gestor-web.js?v=202611141901"></script>
 </head>
 <body>
   <div id="loading"><img src="icon-192.png" alt=""><p>Cargando…</p></div>
   <div id="app"></div>
   <script>
-    // Kotlin/Wasm necesita Safari 18.2 o más nuevo (iOS 18.2+).
-    if (typeof WebAssembly !== "object" || !WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 95, 1, 120, 0]))) {
-      document.querySelector("#loading p").textContent = "Esta app necesita iOS 18.2 o más nuevo. Actualizá el iPhone desde Ajustes → General → Actualización de software.";
+    // Dos versiones de la app: la de WebAssembly GC (más rápida, iOS 18.2+) y la compatible en JavaScript
+    // para iPhones más viejos. Con "?js" en la dirección se fuerza la compatible (para probarla).
+    var wasmGc = typeof WebAssembly === "object" &&
+      WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 95, 1, 120, 0]));
+    if (typeof WebAssembly !== "object") {
+      document.querySelector("#loading p").textContent = "Este iPhone es demasiado viejo para la app. Actualizalo desde Ajustes → General → Actualización de software.";
     } else {
-      const s = document.createElement("script");
-      s.src = "gestor.js?v=202611141810";
+      var s = document.createElement("script");
+      s.src = (wasmGc && !/[?&]js\b/.test(location.search) ? "gestor.js" : "gestor-js.js") + "?v=202611141901";
+      s.onerror = function () { document.querySelector("#loading p").textContent = "No se pudo cargar la app. Revisá la conexión y volvé a abrirla."; };
       document.body.appendChild(s);
     }
   </script>

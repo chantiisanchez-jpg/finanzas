@@ -1,7 +1,7 @@
 // Funciones del navegador que usa la app (desde Kotlin, en WebPlatform.kt y PdfWordExtractor.web.kt).
 window.gestorWeb = {
   /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
-  version: "14/11 17:53",
+  version: "14/11 19:01",
 
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
@@ -300,6 +300,18 @@ function cancelarParaLaApp(e, tipo) {
 }
 
 if (ES_IOS) {
+  // Mientras el campo nativo está abierto, la app no puede llevarse el foco a su campo oculto (lo hacía medio
+  // segundo después del toque, y eso cerraba el campo nativo y el teclado).
+  const focusOriginal = HTMLElement.prototype.focus;
+  HTMLElement.prototype.focus = function (opciones) {
+    if (editor && this !== editor.input) {
+      const app = document.getElementById("app");
+      const raiz = this.getRootNode && this.getRootNode();
+      if ((app && app.contains(this)) || (raiz && raiz !== document && raiz.host && app && app.contains(raiz.host))) return;
+    }
+    return focusOriginal.call(this, opciones);
+  };
+
   let inicio = null;
   const esToque = (x, y) => inicio && Math.hypot(x - inicio.x, y - inicio.y) <= 10;
   window.addEventListener("touchstart", (e) => {
