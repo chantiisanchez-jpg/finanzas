@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnóstico</title>
+<style>
+  body { font: 15px -apple-system, system-ui, sans-serif; margin: 16px; background: #fff; color: #111; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  pre { white-space: pre-wrap; word-break: break-all; background: #f4f4ee; padding: 10px; border-radius: 8px; font: 12px/1.4 Menlo, monospace; }
+  button { font-size: 16px; padding: 12px 14px; margin: 6px 0; width: 100%; border-radius: 10px; border: 1px solid #1D6247; background: #E8F2EC; color: #1D6247; }
+  iframe { width: 100%; height: 420px; border: 2px solid #999; border-radius: 8px; }
+</style>
+</head>
+<body>
+<!-- Página simple (sin la app) para ver qué pasa en un iPhone: no borra los movimientos guardados. -->
+<h1>Diagnóstico de la app</h1>
+<pre id="info">Revisando…</pre>
+<button id="limpiar">Borrar copias guardadas de la app (no borra tus datos)</button>
+<button id="probar">Probar la app acá abajo</button>
+<pre id="app">—</pre>
+<div id="marco"></div>
+<script>
+var info = document.getElementById("info");
+var lineas = [];
+function linea(t) { lineas.push(t); info.textContent = lineas.join("\n"); }
+function prueba(nombre, fn) { try { linea(nombre + ": " + fn()); } catch (e) { linea(nombre + ": ERROR " + e.message); } }
+
+prueba("Navegador", function () { return navigator.userAgent; });
+prueba("iOS", function () { var m = navigator.userAgent.match(/OS (\d+)_(\d+)(?:_(\d+))?/); return m ? m[1] + "." + m[2] + (m[3] ? "." + m[3] : "") : "no es iPhone"; });
+prueba("Pantalla", function () { return innerWidth + "x" + innerHeight + " dpr " + devicePixelRatio; });
+prueba("WebAssembly", function () { return typeof WebAssembly === "object" ? "sí" : "NO"; });
+prueba("WebAssembly GC (versión nueva)", function () {
+  return WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 95, 1, 120, 0])) ? "sí" : "NO";
+});
+prueba("WebGL2", function () { var c = document.createElement("canvas"); return c.getContext("webgl2") ? "sí" : "NO"; });
+prueba("Datos guardados", function () {
+  var d = localStorage.getItem("finanzas_pro.data_v1");
+  if (!d) return "no hay";
+  var n = 0; try { n = JSON.parse(d).transactions.length; } catch (e) {}
+  return d.length + " caracteres, " + n + " movimientos";
+});
+prueba("Modo oscuro", function () { return matchMedia("(prefers-color-scheme: dark)").matches ? "sí" : "no"; });
+
+if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+  navigator.serviceWorker.getRegistrations().then(function (regs) {
+    linea("Service workers: " + (regs.length ? regs.map(function (r) {
+      var w = r.active || r.waiting || r.installing;
+      return r.scope + " (" + (w ? w.state : "?") + ")";
+    }).join(", ") : "ninguno"));
+  }).catch(function (e) { linea("Service workers: ERROR " + e.message); });
+} else linea("Service workers: no soportado");
+if (window.caches) {
+  caches.keys().then(function (k) { linea("Copias guardadas: " + (k.join(", ") || "ninguna")); });
+}
+function versionDe(url, re, nombre) {
+  fetch(url + (url.indexOf("?") < 0 ? "?" : "&") + "t=" + Date.now(), { cache: "no-store" })
+    .then(function (r) { return r.text().then(function (t) { var m = t.match(re); linea(nombre + ": " + r.status + " " + (m ? m[1] : "(sin versión)")); }); })
+    .catch(function (e) { linea(nombre + ": ERROR " + e.message); });
+}
+versionDe("index.html", /gestor-web\.js\?v=([\w]+)/, "Página publicada");
+versionDe("gestor-web.js", /version: "([^"]+)"/, "Versión publicada");
+
+document.getElementById("limpiar").onclick = function () {
+  var tareas = [];
+  if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+    tareas.push(navigator.serviceWorker.getRegistrations().then(function (regs) {
+      return Promise.all(regs.map(function (r) { return r.unregister(); }));
+    }));
+  }
+  if (window.caches) {
+    tareas.push(caches.keys().then(function (k) { return Promise.all(k.map(function (n) { return caches.delete(n); })); }));
+  }
+  Promise.all(tareas).then(function () {
+    alert("Listo: se borraron las copias guardadas. Tus movimientos siguen ahí. Ahora abrí la app de nuevo.");
+    location.reload();
+  }).catch(function (e) { alert("No se pudo: " + e.message); });
+};
+
+// Carga la app en un recuadro y, a los 12 segundos, cuenta qué pasó adentro.
+document.getElementById("probar").onclick = function () {
+  var out = document.getElementById("app");
+  out.textContent = "Cargando la app…";
+  var f = document.createElement("iframe");
+  f.src = "index.html?t=" + Date.now();
+  document.getElementById("marco").innerHTML = "";
+  document.getElementById("marco").appendChild(f);
+  setTimeout(function () {
+    try {
+      var w = f.contentWindow, doc = w.document;
+      var errores = (w.__errores || []).slice(-10);
+      var lienzos = [];
+      (function recorrer(raiz) {
+        var els = raiz.querySelectorAll("*");
+        for (var i = 0; i < els.length; i++) {
+          if (els[i].tagName === "CANVAS") lienzos.push(els[i].width + "x" + els[i].height);
+          if (els[i].shadowRoot) recorrer(els[i].shadowRoot);
+        }
+      })(doc);
+      out.textContent = [
+        "Versión cargada: " + (w.gestorWeb ? w.gestorWeb.version : "NO cargó gestor-web.js"),
+        "Cartel Cargando: " + (doc.getElementById("loading") ? "sigue (" + doc.querySelector("#loading p").textContent + ")" : "se fue (la app arrancó)"),
+        "Lienzos: " + (lienzos.join(", ") || "ninguno"),
+        "Fondo: " + w.getComputedStyle(doc.body).backgroundColor,
+        errores.length ? "Errores:\n" + errores.join("\n") : "Sin errores",
+      ].join("\n");
+    } catch (e) { out.textContent = "No se pudo revisar: " + e.message; }
+  }, 12000);
+};
+</script>
+</body>
+</html>
