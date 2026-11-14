@@ -1,7 +1,7 @@
 // Funciones del navegador que usa la app (desde Kotlin, en WebPlatform.kt y PdfWordExtractor.web.kt).
 window.gestorWeb = {
   /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
-  version: "14/11 20:15",
+  version: "14/11 20:27",
 
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
@@ -371,6 +371,35 @@ if (ES_IOS) {
       const o = P.prototype[f];
       P.prototype[f] = function () { d.dibujos++; return o.apply(this, arguments); };
     }
+  }
+  // Qué le pregunta Skia al WebGL del teléfono y qué le contesta (para reproducirlo en otra máquina).
+  d.gl = [];
+  const vistos = new Set();
+  const anotarGl = (s) => { if (!vistos.has(s) && d.gl.length < 300) { vistos.add(s); d.gl.push(s); } };
+  const resumen = (r) => {
+    if (r === null || r === undefined) return String(r);
+    if (ArrayBuffer.isView(r)) return "[" + Array.from(r).join(",") + "]";
+    if (typeof r === "object") return (r.constructor && r.constructor.name) || "objeto";
+    return JSON.stringify(r);
+  };
+  for (const P of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
+    if (!P) continue;
+    const pr = P.prototype;
+    const nombre = P === window.WebGL2RenderingContext ? "gl2" : "gl1";
+    const gp = pr.getParameter;
+    pr.getParameter = function (p) { const r = gp.call(this, p); anotarGl(nombre + " param 0x" + Number(p).toString(16) + " = " + resumen(r)); return r; };
+    const ge = pr.getExtension;
+    pr.getExtension = function (n) { const r = ge.call(this, n); anotarGl(nombre + " ext " + n + " = " + (r ? "sí" : "NO")); return r; };
+    const gs = pr.getSupportedExtensions;
+    pr.getSupportedExtensions = function () { const r = gs.call(this); anotarGl(nombre + " extensiones: " + (r || []).join(" ")); return r; };
+    const cf = pr.checkFramebufferStatus;
+    pr.checkFramebufferStatus = function (t) { const r = cf.call(this, t); anotarGl(nombre + " framebuffer 0x" + Number(r).toString(16)); return r; };
+    const gpf = pr.getShaderPrecisionFormat;
+    pr.getShaderPrecisionFormat = function (s, t) { const r = gpf.call(this, s, t); anotarGl(nombre + " precision " + s + "/" + t + " = " + (r ? r.rangeMin + "," + r.rangeMax + "," + r.precision : "null")); return r; };
+    const gca = pr.getContextAttributes;
+    pr.getContextAttributes = function () { const r = gca.call(this); anotarGl(nombre + " atributos " + JSON.stringify(r)); return r; };
+    const gerr = pr.getError;
+    pr.getError = function () { const r = gerr.call(this); if (r) anotarGl(nombre + " getError 0x" + r.toString(16)); return r; };
   }
   const lienzos = () => {
     const out = [];

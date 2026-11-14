@@ -19,6 +19,8 @@
 <button id="limpiar">Borrar copias guardadas de la app (no borra tus datos)</button>
 <button id="probar">Probar la app acá abajo</button>
 <pre id="app">—</pre>
+<button id="copiar">Copiar informe (para pegárselo a Claude)</button>
+<pre id="gl" style="max-height:240px;overflow:auto">—</pre>
 <div id="marco"></div>
 <script>
 var info = document.getElementById("info");
@@ -34,6 +36,14 @@ prueba("WebAssembly GC (versión nueva)", function () {
   return WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 95, 1, 120, 0])) ? "sí" : "NO";
 });
 prueba("WebGL2", function () { var c = document.createElement("canvas"); return c.getContext("webgl2") ? "sí" : "NO"; });
+prueba("WebGL datos", function () {
+  var gl = document.createElement("canvas").getContext("webgl2");
+  if (!gl) return "sin WebGL2";
+  var dbg = gl.getExtension("WEBGL_debug_renderer_info");
+  return [gl.getParameter(gl.VERSION), gl.getParameter(gl.SHADING_LANGUAGE_VERSION), gl.getParameter(gl.VENDOR), gl.getParameter(gl.RENDERER),
+    dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "-", "maxTex " + gl.getParameter(gl.MAX_TEXTURE_SIZE),
+    "maxRB " + gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), "samples " + gl.getParameter(gl.MAX_SAMPLES)].join(" | ");
+});
 prueba("Datos guardados", function () {
   var d = localStorage.getItem("finanzas_pro.data_v1");
   if (!d) return "no hay";
@@ -77,12 +87,26 @@ document.getElementById("limpiar").onclick = function () {
   }).catch(function (e) { alert("No se pudo: " + e.message); });
 };
 
+document.getElementById("copiar").onclick = function () {
+  var texto = ["== INFO", info.textContent, "== APP", document.getElementById("app").textContent, "== WEBGL", document.getElementById("gl").textContent].join("\n");
+  var listo = function () { alert("Copiado. Pegalo en el chat con Claude."); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(texto).then(listo, function () { copiarViejo(texto); listo(); });
+  } else { copiarViejo(texto); listo(); }
+};
+function copiarViejo(texto) {
+  var t = document.createElement("textarea");
+  t.value = texto; document.body.appendChild(t); t.select();
+  try { document.execCommand("copy"); } catch (e) {}
+  t.remove();
+}
+
 // Carga la app en un recuadro y, a los 12 segundos, cuenta qué pasó adentro.
 document.getElementById("probar").onclick = function () {
   var out = document.getElementById("app");
   out.textContent = "Cargando la app…";
   var f = document.createElement("iframe");
-  f.src = "index.html?t=" + Date.now();
+  f.src = "index.html?diag&t=" + Date.now();
   document.getElementById("marco").innerHTML = "";
   document.getElementById("marco").appendChild(f);
   setTimeout(function () {
@@ -104,6 +128,8 @@ document.getElementById("probar").onclick = function () {
         "Fondo: " + w.getComputedStyle(doc.body).backgroundColor,
         errores.length ? "Errores:\n" + errores.join("\n") : "Sin errores",
       ].join("\n");
+      var gl = (w.__diag && w.__diag.gl) || [];
+      document.getElementById("gl").textContent = gl.length ? gl.join("\n") : "(sin datos de WebGL)";
     } catch (e) { out.textContent = "No se pudo revisar: " + e.message; }
   }, 12000);
 };
