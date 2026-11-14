@@ -1,7 +1,7 @@
 // Funciones del navegador que usa la app (desde Kotlin, en WebPlatform.kt y PdfWordExtractor.web.kt).
 window.gestorWeb = {
   /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
-  version: "11/11 14:45",
+  version: "14/11 17:40",
 
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
@@ -327,6 +327,30 @@ if (ES_IOS) {
     abrirEditor(id);
   }, { capture: true, passive: false });
 }
+
+// ---------- Safari: la app quedaba en blanco ----------
+// En Safari (iPhone), Compose dibuja el cuadro y recién después el lienzo cambia de tamaño, lo que lo borra;
+// como no vuelve a dibujar, se ve solo el fondo. Cada vez que el tamaño cambia de verdad (al abrir, al girar,
+// al aparecer la barra o el teclado) se le pide a la app que se vuelva a dibujar.
+(function redibujarAlCambiarTamano() {
+  let espera = null;
+  const redibujar = () => {
+    clearTimeout(espera);
+    espera = setTimeout(() => window.dispatchEvent(new Event("resize")), 80);
+  };
+  // Solo los cambios reales (isTrusted): el aviso propio no vuelve a disparar otro.
+  window.addEventListener("resize", (e) => { if (e.isTrusted) redibujar(); });
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", redibujar);
+  const vigilar = () => {
+    const app = document.getElementById("app");
+    if (!app || typeof ResizeObserver !== "function") return setTimeout(vigilar, 50);
+    new ResizeObserver(redibujar).observe(app);
+    // Al arrancar: varios avisos hasta que el lienzo de la app esté armado.
+    [300, 800, 1500, 3000].forEach((ms) => setTimeout(redibujar, ms));
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", vigilar);
+  else vigilar();
+})();
 
 // Guarda la app en el teléfono para que abra aunque no haya internet.
 if ("serviceWorker" in navigator && location.protocol === "https:") {
