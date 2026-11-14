@@ -1,7 +1,7 @@
 // Funciones del navegador que usa la app (desde Kotlin, en WebPlatform.kt y PdfWordExtractor.web.kt).
 window.gestorWeb = {
   /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
-  version: "14/11 17:48",
+  version: "14/11 17:53",
 
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
@@ -430,7 +430,8 @@ if (ES_IOS) {
 
 // Guarda la app en el teléfono para que abra aunque no haya internet.
 if ("serviceWorker" in navigator && location.protocol === "https:") {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+  // updateViaCache "none" + update(): cada vez que se abre, se fija si hay una versión nueva del sw.
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {});
 }
 // Pide al navegador que no borre los datos guardados de la app.
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});

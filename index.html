@@ -25,7 +25,8 @@
     #loading img { width: 88px; height: 88px; border-radius: 20px; }
     #loading p { margin: 0 32px; text-align: center; }
   </style>
-  <script src="gestor-web.js"></script>
+  <!-- "?v=": cada versión publicada tiene su propia dirección, así el teléfono no usa una copia vieja. -->
+  <script src="gestor-web.js?v=202611141753"></script>
 </head>
 <body>
   <div id="loading"><img src="icon-192.png" alt=""><p>Cargando…</p></div>
@@ -36,7 +37,7 @@
       document.querySelector("#loading p").textContent = "Esta app necesita iOS 18.2 o más nuevo. Actualizá el iPhone desde Ajustes → General → Actualización de software.";
     } else {
       const s = document.createElement("script");
-      s.src = "gestor.js";
+      s.src = "gestor.js?v=202611141753";
       document.body.appendChild(s);
     }
   </script>
