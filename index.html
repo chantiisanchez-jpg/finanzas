@@ -30,9 +30,37 @@
     window.__errores = [];
     window.addEventListener("error", function (e) { window.__errores.push("ERROR " + e.message + " " + String(e.filename).split("/").pop() + ":" + e.lineno); });
     window.addEventListener("unhandledrejection", function (e) { window.__errores.push("PROMESA " + (e.reason && (e.reason.stack || e.reason.message) || e.reason)); });
+
+    // En algunos iPhone (iOS 27), a veces Skia no logra crear la superficie de dibujo al arrancar
+    // ("Can't wrap nullptr" en cada cuadro) y la pantalla queda vacía. No pasa siempre: si ocurre, se
+    // recarga sola hasta 2 veces; si sigue, se muestra un botón para reintentar en vez de la pantalla negra.
+    (function reintentoAutomatico() {
+      if (/[?&](cfg|diag)/.test(location.search)) return; // las pruebas de diag.html miden sin ayuda
+      var CLAVE = "gestor.reintentos";
+      var leer = function () { try { return Number(sessionStorage.getItem(CLAVE)) || 0; } catch (e) { return 0; } };
+      var guardar = function (n) { try { if (n) sessionStorage.setItem(CLAVE, String(n)); else sessionStorage.removeItem(CLAVE); } catch (e) {} };
+      var fallas = 0, resuelto = false;
+      window.addEventListener("error", function (e) {
+        if (resuelto || !/nullptr/.test(String(e.message))) return;
+        if (++fallas < 3) return;
+        resuelto = true;
+        var n = leer();
+        if (n < 2) { guardar(n + 1); location.reload(); return; }
+        guardar(0);
+        var aviso = document.createElement("div");
+        aviso.style.cssText = "position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;" +
+          "justify-content:center;gap:16px;padding:32px;text-align:center;background:#F3F5F0;color:#1D6247;font:16px -apple-system,system-ui,sans-serif";
+        aviso.innerHTML = "<p style='margin:0'>El iPhone no pudo dibujar la app esta vez.</p>" +
+          "<button style='font:600 17px -apple-system,system-ui,sans-serif;padding:12px 22px;border-radius:12px;border:0;background:#1D6247;color:#fff'>Reintentar</button>";
+        aviso.querySelector("button").onclick = function () { location.reload(); };
+        document.body.appendChild(aviso);
+      });
+      // Si arrancó bien, el contador vuelve a cero.
+      setTimeout(function () { if (!resuelto) guardar(0); }, 20000);
+    })();
   </script>
   <!-- "?v=": cada versión publicada tiene su propia dirección, así el teléfono no usa una copia vieja. -->
-  <script src="gestor-web.js?v=202611142046"></script>
+  <script src="gestor-web.js?v=202611142055"></script>
 </head>
 <body>
   <div id="loading"><img src="icon-192.png" alt=""><p>Cargando…</p></div>
@@ -45,10 +73,20 @@
     if (typeof WebAssembly !== "object") {
       document.querySelector("#loading p").textContent = "Este iPhone es demasiado viejo para la app. Actualizalo desde Ajustes → General → Actualización de software.";
     } else {
-      var s = document.createElement("script");
-      s.src = (wasmGc && !/[?&]js\b/.test(location.search) ? "gestor.js" : "gestor-js.js") + "?v=202611142046";
-      s.onerror = function () { document.querySelector("#loading p").textContent = "No se pudo cargar la app. Revisá la conexión y volvé a abrirla."; };
-      document.body.appendChild(s);
+      // La app arranca recién cuando la pantalla está visible y el lugar de la app ya tiene su tamaño real:
+      // si Skia crea la superficie con tamaño cero, en iPhone no se recupera.
+      var arrancada = false;
+      var arrancar = function () {
+        if (arrancada) return;
+        var r = document.getElementById("app").getBoundingClientRect();
+        if (document.visibilityState !== "visible" || r.width < 10 || r.height < 10) { setTimeout(arrancar, 100); return; }
+        arrancada = true;
+        var s = document.createElement("script");
+        s.src = (wasmGc && !/[?&]js\b/.test(location.search) ? "gestor.js" : "gestor-js.js") + "?v=202611142055";
+        s.onerror = function () { document.querySelector("#loading p").textContent = "No se pudo cargar la app. Revisá la conexión y volvé a abrirla."; };
+        document.body.appendChild(s);
+      };
+      requestAnimationFrame(function () { requestAnimationFrame(arrancar); });
     }
   </script>
 </body>
