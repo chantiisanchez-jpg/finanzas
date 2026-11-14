@@ -1,7 +1,7 @@
 // Funciones del navegador que usa la app (desde Kotlin, en WebPlatform.kt y PdfWordExtractor.web.kt).
 window.gestorWeb = {
   /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
-  version: "14/11 17:40",
+  version: "14/11 17:48",
 
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
@@ -327,6 +327,82 @@ if (ES_IOS) {
     abrirEditor(id);
   }, { capture: true, passive: false });
 }
+
+// ---------- Diagnóstico (abrir con ?diag en la dirección) ----------
+// Muestra en pantalla, encima de la app, los errores y si el lienzo está dibujando. Sirve para ver qué
+// pasa en el iPhone sin una Mac. Sin "?diag" no hace nada.
+(function diagnostico() {
+  if (!/[?&]diag/.test(location.search)) return;
+  const d = { errores: [], contextos: [], dibujos: 0, cuadros: 0, perdidos: 0, inicio: Date.now() };
+  window.__diag = d;
+  const nota = (m) => { d.errores.push(((Date.now() - d.inicio) / 1000).toFixed(1) + "s " + String(m).slice(0, 300)); };
+  window.addEventListener("error", (e) => nota("ERROR " + e.message + " " + (e.filename || "").split("/").pop() + ":" + e.lineno));
+  window.addEventListener("unhandledrejection", (e) => nota("PROMESA " + (e.reason && (e.reason.stack || e.reason.message) || e.reason)));
+  const ce = console.error.bind(console), cw = console.warn.bind(console);
+  console.error = (...a) => { nota("console.error " + a.join(" ")); ce(...a); };
+  console.warn = (...a) => { if (!String(a[0]).includes("WEBGL_debug")) nota("console.warn " + a.join(" ")); cw(...a); };
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (cb) => raf((t) => { d.cuadros++; cb(t); });
+  const gc = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (tipo, attrs) {
+    const c = gc.call(this, tipo, attrs);
+    if (/webgl/.test(tipo)) {
+      d.contextos.push(tipo + (c ? " ok" : " FALLÓ"));
+      this.addEventListener("webglcontextlost", () => { d.perdidos++; nota("WebGL: contexto PERDIDO"); });
+      this.addEventListener("webglcontextrestored", () => nota("WebGL: contexto recuperado"));
+    }
+    return c;
+  };
+  for (const P of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
+    if (!P) continue;
+    for (const f of ["drawElements", "drawArrays"]) {
+      const o = P.prototype[f];
+      P.prototype[f] = function () { d.dibujos++; return o.apply(this, arguments); };
+    }
+  }
+  const lienzos = () => {
+    const out = [];
+    const recorrer = (raiz) => raiz.querySelectorAll("*").forEach((el) => {
+      if (el.tagName === "CANVAS") {
+        const r = el.getBoundingClientRect();
+        out.push(el.width + "x" + el.height + " css " + Math.round(r.width) + "x" + Math.round(r.height) + " @" + Math.round(r.left) + "," + Math.round(r.top));
+      }
+      if (el.shadowRoot) recorrer(el.shadowRoot);
+    });
+    recorrer(document);
+    return out.join(" | ") || "ninguno";
+  };
+  const pintar = () => {
+    let box = document.getElementById("diag");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "diag";
+      box.style.cssText = "position:fixed;left:6px;right:6px;bottom:6px;max-height:55%;overflow:auto;z-index:99;" +
+        "background:rgba(255,255,230,.95);color:#000;font:11px/1.35 ui-monospace,Menlo,monospace;padding:8px;border-radius:8px;" +
+        "border:2px solid #d00;white-space:pre-wrap;word-break:break-all;-webkit-user-select:text;user-select:text";
+      const btn = document.createElement("button");
+      btn.textContent = "Redibujar";
+      btn.style.cssText = "float:right;font:13px sans-serif;padding:6px 10px";
+      btn.onclick = () => { nota("toqué Redibujar"); window.dispatchEvent(new Event("resize")); };
+      box.appendChild(btn);
+      box.appendChild(document.createElement("span"));
+      document.body.appendChild(box);
+    }
+    box.lastChild.textContent = [
+      "DIAGNÓSTICO · versión " + (window.gestorWeb && window.gestorWeb.version),
+      navigator.userAgent,
+      "pantalla " + innerWidth + "x" + innerHeight + " dpr " + devicePixelRatio + (window.visualViewport ? " vv " + Math.round(visualViewport.width) + "x" + Math.round(visualViewport.height) : ""),
+      "WebGL: " + (d.contextos.join(", ") || "sin crear") + " · perdidos " + d.perdidos,
+      "lienzos: " + lienzos(),
+      "cuadros " + d.cuadros + " · dibujos " + d.dibujos + " · cartel Cargando " + (document.getElementById("loading") ? "SÍ" : "no"),
+      "fondo " + getComputedStyle(document.body).backgroundColor + " · " + ((Date.now() - d.inicio) / 1000).toFixed(0) + "s",
+      d.errores.length ? "--- avisos ---\n" + d.errores.slice(-15).join("\n") : "sin errores",
+    ].join("\n");
+  };
+  const empezar = () => { pintar(); setInterval(pintar, 1000); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", empezar);
+  else empezar();
+})();
 
 // ---------- Safari: la app quedaba en blanco ----------
 // En Safari (iPhone), Compose dibuja el cuadro y recién después el lienzo cambia de tamaño, lo que lo borra;
