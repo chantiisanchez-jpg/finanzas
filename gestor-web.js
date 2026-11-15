@@ -11,7 +11,7 @@
 
 window.gestorWeb = {
   /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
-  version: "14/11 21:15",
+  version: "14/11 21:20",
 
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
@@ -573,7 +573,6 @@ const PRUEBAS = {
   };
   // Solo los cambios reales (isTrusted): el aviso propio no vuelve a disparar otro.
   window.addEventListener("resize", (e) => { if (e.isTrusted) redibujar(); });
-  if (window.visualViewport) window.visualViewport.addEventListener("resize", redibujar);
   const vigilar = () => {
     const app = document.getElementById("app");
     if (!app || typeof ResizeObserver !== "function") return setTimeout(vigilar, 50);
@@ -583,6 +582,21 @@ const PRUEBAS = {
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", vigilar);
   else vigilar();
+})();
+
+// ---------- La página queda quieta: solo se mueve el contenido de la app ----------
+// Sin esto, en Safari arrastrar el dedo desplazaba o hacía rebotar toda la página (y ocultaba la barra de
+// direcciones), la pantalla cambiaba de tamaño y la app quedaba corrida o en negro. La app recibe igual
+// los toques: cancelar el desplazamiento del navegador no frena el evento.
+(function paginaQuieta() {
+  const enCampoNativo = (e) => e.target && e.target.tagName === "INPUT";
+  document.addEventListener("touchmove", (e) => { if (!enCampoNativo(e) && e.cancelable) e.preventDefault(); }, { passive: false, capture: true });
+  // Zoom con dos dedos (Safari a veces ignora user-scalable=no).
+  for (const tipo of ["gesturestart", "gesturechange", "gestureend"]) {
+    document.addEventListener(tipo, (e) => e.preventDefault(), { passive: false });
+  }
+  // Si por algo la página quedó desplazada, vuelve a su lugar.
+  window.addEventListener("scroll", () => { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); }, { passive: true });
 })();
 
 // Guarda la app en el teléfono para que abra aunque no haya internet.
