@@ -1,7 +1,17 @@
 // Funciones del navegador que usa la app (desde Kotlin, en WebPlatform.kt y PdfWordExtractor.web.kt).
+
+// Safari de iOS 27: sin esto, Skia falla en cada cuadro ("Can't wrap nullptr") y la app queda en negro.
+// La prueba en pantalla completa de diag.html (en un iPhone real) mostró que todas las variantes con este
+// intermediario de requestAnimationFrame dibujan y todas las que no lo tienen fallan, sin importar la
+// resolución. No cambia nada más: pasa el mismo callback con el mismo tiempo.
+(function intermediarioDeCuadros() {
+  const raf = window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame = (cb) => raf((t) => { cb(t); });
+})();
+
 window.gestorWeb = {
   /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
-  version: "14/11 21:03",
+  version: "14/11 21:15",
 
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
