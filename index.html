@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Nombre</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -12,87 +12,20 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" href="favicon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <style>
-    /* La página no se desplaza ni rebota ni hace zoom: solo se mueve el contenido de la app (en Safari, al
-       arrastrar se movía toda la página, cambiaba el tamaño de pantalla y la app quedaba corrida o en negro). */
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #F3F5F0; overscroll-behavior: none;
-      touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
-    body { position: fixed; inset: 0; }
-    /* La app ocupa la pantalla menos la muesca y la barra de inicio del iPhone. */
-    #app {
-      position: fixed;
-      top: env(safe-area-inset-top); bottom: env(safe-area-inset-bottom);
-      left: env(safe-area-inset-left); right: env(safe-area-inset-right);
-      touch-action: none;
-    }
-    #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      font: 16px -apple-system, system-ui, sans-serif; color: #1D6247; gap: 16px; }
-    #loading img { width: 88px; height: 88px; border-radius: 20px; }
-    #loading p { margin: 0 32px; text-align: center; }
-  </style>
-  <script>
-    // Anota cualquier error desde el primer momento (lo muestra diag.html).
-    window.__errores = [];
-    window.addEventListener("error", function (e) { window.__errores.push("ERROR " + e.message + " " + String(e.filename).split("/").pop() + ":" + e.lineno); });
-    window.addEventListener("unhandledrejection", function (e) { window.__errores.push("PROMESA " + (e.reason && (e.reason.stack || e.reason.message) || e.reason)); });
-
-    // En algunos iPhone (iOS 27), a veces Skia no logra crear la superficie de dibujo al arrancar
-    // ("Can't wrap nullptr" en cada cuadro) y la pantalla queda vacía. No pasa siempre: si ocurre, se
-    // recarga sola hasta 2 veces; si sigue, se muestra un botón para reintentar en vez de la pantalla negra.
-    (function reintentoAutomatico() {
-      if (/[?&](cfg|diag)/.test(location.search)) return; // las pruebas de diag.html miden sin ayuda
-      var CLAVE = "gestor.reintentos";
-      var leer = function () { try { return Number(sessionStorage.getItem(CLAVE)) || 0; } catch (e) { return 0; } };
-      var guardar = function (n) { try { if (n) sessionStorage.setItem(CLAVE, String(n)); else sessionStorage.removeItem(CLAVE); } catch (e) {} };
-      var fallas = 0, resuelto = false;
-      window.addEventListener("error", function (e) {
-        if (resuelto || !/nullptr/.test(String(e.message))) return;
-        if (++fallas < 3) return;
-        resuelto = true;
-        var n = leer();
-        if (n < 2) { guardar(n + 1); location.reload(); return; }
-        guardar(0);
-        var aviso = document.createElement("div");
-        aviso.style.cssText = "position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;" +
-          "justify-content:center;gap:16px;padding:32px;text-align:center;background:#F3F5F0;color:#1D6247;font:16px -apple-system,system-ui,sans-serif";
-        aviso.innerHTML = "<p style='margin:0'>El iPhone no pudo dibujar la app esta vez.</p>" +
-          "<button style='font:600 17px -apple-system,system-ui,sans-serif;padding:12px 22px;border-radius:12px;border:0;background:#1D6247;color:#fff'>Reintentar</button>";
-        aviso.querySelector("button").onclick = function () { location.reload(); };
-        document.body.appendChild(aviso);
-      });
-      // Si arrancó bien, el contador vuelve a cero.
-      setTimeout(function () { if (!resuelto) guardar(0); }, 20000);
-    })();
-  </script>
-  <!-- "?v=": cada versión publicada tiene su propia dirección, así el teléfono no usa una copia vieja. -->
-  <script src="gestor-web.js?v=202611142120"></script>
+  <!-- Versión web hecha con páginas comunes (HTML): anda en cualquier iPhone. Usa los mismos datos que la
+       versión anterior (localStorage "finanzas_pro.data_v1"), así no se pierde nada. -->
+  <link rel="stylesheet" href="app.css?v=202611142131">
 </head>
 <body>
-  <div id="loading"><img src="icon-192.png" alt=""><p>Cargando…</p></div>
-  <div id="app"></div>
-  <script>
-    // Dos versiones de la app: la de WebAssembly GC (más rápida, iOS 18.2+) y la compatible en JavaScript
-    // para iPhones más viejos. Con "?js" en la dirección se fuerza la compatible (para probarla).
-    var wasmGc = typeof WebAssembly === "object" &&
-      WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 95, 1, 120, 0]));
-    if (typeof WebAssembly !== "object") {
-      document.querySelector("#loading p").textContent = "Este iPhone es demasiado viejo para la app. Actualizalo desde Ajustes → General → Actualización de software.";
-    } else {
-      // La app arranca recién cuando la pantalla está visible y el lugar de la app ya tiene su tamaño real:
-      // si Skia crea la superficie con tamaño cero, en iPhone no se recupera.
-      var arrancada = false;
-      var arrancar = function () {
-        if (arrancada) return;
-        var r = document.getElementById("app").getBoundingClientRect();
-        if (document.visibilityState !== "visible" || r.width < 10 || r.height < 10) { setTimeout(arrancar, 100); return; }
-        arrancada = true;
-        var s = document.createElement("script");
-        s.src = (wasmGc && !/[?&]js\b/.test(location.search) ? "gestor.js" : "gestor-js.js") + "?v=202611142120";
-        s.onerror = function () { document.querySelector("#loading p").textContent = "No se pudo cargar la app. Revisá la conexión y volvé a abrirla."; };
-        document.body.appendChild(s);
-      };
-      requestAnimationFrame(function () { requestAnimationFrame(arrancar); });
-    }
-  </script>
+  <main id="vista"></main>
+  <nav id="nav">
+    <button data-tab="inicio" class="sel"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg><span>Inicio</span></button>
+    <button data-tab="actividad"><svg viewBox="0 0 24 24"><path d="M19.5 3.5 18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2v14H3v3c0 1.66 1.34 3 3 3h12c1.66 0 3-1.34 3-3V2l-1.5 1.5zM19 19c0 .55-.45 1-1 1s-1-.45-1-1v-3H8V5h11v14z"/><path d="M9 7h6v2H9zm7 0h2v2h-2zm-7 3h6v2H9zm7 0h2v2h-2z"/></svg><span>Actividad</span></button>
+    <button data-tab="informes"><svg viewBox="0 0 24 24"><path d="M11 2v20c-5.07-.5-9-4.79-9-10s3.93-9.5 9-10zm2.03 0v8.99H22c-.47-4.74-4.24-8.52-8.97-8.99zm0 11.01V22c4.74-.47 8.5-4.25 8.97-8.99h-8.97z"/></svg><span>Informes</span></button>
+    <button data-tab="ajustes"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg><span>Ajustes</span></button>
+  </nav>
+  <div id="capa"></div>
+  <div id="aviso"></div>
+  <script src="app.js?v=202611142131"></script>
 </body>
 </html>
