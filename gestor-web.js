@@ -1,7 +1,7 @@
 // Funciones del navegador que usa la app (desde Kotlin, en WebPlatform.kt y PdfWordExtractor.web.kt).
 window.gestorWeb = {
   /** Se reemplaza al publicar: permite confirmar en Ajustes qué versión cargó el teléfono. */
-  version: "14/11 20:55",
+  version: "14/11 21:03",
 
   /** Pinta el fondo de la página con el color del tema y saca el cartel de "Cargando…". */
   setPageColor(css) {
@@ -341,67 +341,109 @@ if (ES_IOS) {
 }
 
 // ---------- Prueba de configuraciones gráficas (abrir con ?cfg=N; la usa diag.html) ----------
-// Cada N cambia una opción del WebGL antes de que arranque la app y mide si de verdad se ve algo:
-// copia el lienzo a una imagen chica justo después de dibujar y cuenta los colores distintos.
+// Cada N activa piezas distintas antes de que arranque la app y mide si falla ("nullptr") o si se ve algo
+// (copia el lienzo a una imagen chica justo después de dibujar y cuenta colores). Con "&auto", pasa sola a
+// la configuración siguiente en pantalla completa y al final vuelve a diag.html con la tabla.
+const PRUEBAS = {
+  0: { nombre: "todo (como antes)", gc: 1, raf: 1, draw: 1, muestra: 1 },
+  1: { nombre: "como diagnóstico", gc: 1, raf: 1, draw: 1, muestra: 1, envolver: 1 },
+  2: { nombre: "sin transparencia", gc: 1, raf: 1, draw: 1, muestra: 1, attrs: { alpha: false } },
+  3: { nombre: "conservar dibujo", gc: 1, raf: 1, draw: 1, muestra: 1, attrs: { preserveDrawingBuffer: true } },
+  4: { nombre: "sin suavizado", gc: 1, raf: 1, draw: 1, muestra: 1, attrs: { antialias: false, depth: false } },
+  5: { nombre: "bajo consumo", gc: 1, raf: 1, draw: 1, muestra: 1, attrs: { powerPreference: "low-power" } },
+  6: { nombre: "resolución baja", gc: 1, raf: 1, draw: 1, muestra: 1, dpr: 1 },
+  7: { nombre: "WebGL 1", gc: 1, raf: 1, draw: 1, muestra: 1, sinGl2: 1 },
+  8: { nombre: "sin transp.+conservar", gc: 1, raf: 1, draw: 1, muestra: 1, attrs: { alpha: false, preserveDrawingBuffer: true } },
+  20: { nombre: "nada (como la app)" },
+  21: { nombre: "solo getContext", gc: 1 },
+  22: { nombre: "solo cuadros (rAF)", raf: 1 },
+  23: { nombre: "solo dibujos", draw: 1 },
+  24: { nombre: "cuadros + muestra", raf: 1, muestra: 1 },
+  25: { nombre: "resolución x2", dpr: 2 },
+  26: { nombre: "resolución x1", dpr: 1 },
+};
 (function pruebaGrafica() {
   const m = /[?&]cfg=(\d+)/.exec(location.search);
   if (!m) return;
   const cfg = Number(m[1]);
-  const r = { cfg, nullptr: 0, errores: 0, primerError: "", cuadros: 0, dibujos: 0, colores: 0, contextos: "" };
+  const p = PRUEBAS[cfg] || {};
+  const r = { cfg, nombre: p.nombre || "?", nullptr: 0, errores: 0, primerError: "", cuadros: 0, dibujos: 0, colores: -1, lienzo: "" };
   window.__prueba = r;
   window.addEventListener("error", (e) => {
     r.errores++;
     if (/nullptr/.test(e.message)) r.nullptr++;
     if (!r.primerError) r.primerError = String(e.message).slice(0, 120);
   });
-  if (cfg === 6) Object.defineProperty(window, "devicePixelRatio", { get: () => 1 });
-  let lienzo = null;
-  const gc = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function (tipo, attrs) {
-    let a = Object.assign({}, attrs || {});
-    if (/webgl/.test(tipo)) {
-      if (cfg === 7 && tipo === "webgl2") return null;
-      if (cfg === 2 || cfg === 8) a.alpha = false;
-      if (cfg === 3 || cfg === 8) a.preserveDrawingBuffer = true;
-      if (cfg === 4) { a.antialias = false; a.depth = false; }
-      if (cfg === 5) a.powerPreference = "low-power";
-    }
-    const c = gc.call(this, tipo, a);
-    if (/webgl/.test(tipo) && c) { lienzo = this; r.contextos = tipo; }
-    return c;
-  };
+  if (p.dpr) Object.defineProperty(window, "devicePixelRatio", { get: () => p.dpr });
+  if (p.gc) {
+    const gc = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (tipo, attrs) {
+      const a = Object.assign({}, attrs || {}, /webgl/.test(tipo) ? p.attrs || {} : {});
+      if (p.sinGl2 && tipo === "webgl2") return null;
+      return gc.call(this, tipo, a);
+    };
+  }
   for (const P of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
     if (!P) continue;
-    for (const f of ["drawElements", "drawArrays"]) {
-      const o = P.prototype[f];
-      P.prototype[f] = function () { r.dibujos++; return o.apply(this, arguments); };
+    if (p.draw) {
+      for (const f of ["drawElements", "drawArrays"]) {
+        const o = P.prototype[f];
+        P.prototype[f] = function () { r.dibujos++; return o.apply(this, arguments); };
+      }
     }
-    if (cfg === 1) {
-      // Igual que el modo diagnóstico: envuelve las consultas (sin cambiar lo que devuelven).
+    if (p.envolver) {
       for (const f of ["getParameter", "getExtension", "getSupportedExtensions", "checkFramebufferStatus", "getShaderPrecisionFormat", "getContextAttributes", "getError"]) {
         const o = P.prototype[f];
         P.prototype[f] = function () { return o.apply(this, arguments); };
       }
     }
   }
-  const muestra = document.createElement("canvas");
-  muestra.width = muestra.height = 24;
-  const m2d = muestra.getContext("2d");
-  const raf = window.requestAnimationFrame.bind(window);
-  window.requestAnimationFrame = (cb) => raf((t) => {
-    cb(t);
-    r.cuadros++;
-    if (lienzo && r.cuadros % 5 === 0) {
-      try {
-        m2d.clearRect(0, 0, 24, 24);
-        m2d.drawImage(lienzo, 0, 0, 24, 24);
-        const px = m2d.getImageData(0, 0, 24, 24).data;
-        const set = new Set();
-        for (let i = 0; i < px.length; i += 4) set.add((px[i] >> 4) + "," + (px[i + 1] >> 4) + "," + (px[i + 2] >> 4) + "," + (px[i + 3] >> 4));
-        r.colores = Math.max(r.colores, set.size);
-      } catch (e) { r.primerError = r.primerError || "muestra: " + e.message; }
-    }
-  });
+  const buscarLienzo = () => {
+    let hallado = null;
+    (function recorrer(raiz) {
+      raiz.querySelectorAll("*").forEach((el) => {
+        if (!hallado && el.tagName === "CANVAS") hallado = el;
+        if (el.shadowRoot) recorrer(el.shadowRoot);
+      });
+    })(document);
+    return hallado;
+  };
+  if (p.raf) {
+    const muestra = document.createElement("canvas");
+    muestra.width = muestra.height = 24;
+    const m2d = p.muestra ? muestra.getContext("2d") : null;
+    const raf = window.requestAnimationFrame.bind(window);
+    window.requestAnimationFrame = (cb) => raf((t) => {
+      cb(t);
+      r.cuadros++;
+      if (m2d && r.cuadros % 5 === 0) {
+        const lienzo = buscarLienzo();
+        if (!lienzo) return;
+        try {
+          m2d.clearRect(0, 0, 24, 24);
+          m2d.drawImage(lienzo, 0, 0, 24, 24);
+          const px = m2d.getImageData(0, 0, 24, 24).data;
+          const set = new Set();
+          for (let i = 0; i < px.length; i += 4) set.add((px[i] >> 4) + "," + (px[i + 1] >> 4) + "," + (px[i + 2] >> 4) + "," + (px[i + 3] >> 4));
+          r.colores = Math.max(r.colores, set.size);
+        } catch (e) { r.primerError = r.primerError || "muestra: " + e.message; }
+      }
+    });
+  }
+  // Modo automático en pantalla completa: guarda el resultado y sigue con la próxima configuración.
+  if (/[?&]auto\b/.test(location.search)) {
+    setTimeout(() => {
+      const l = buscarLienzo();
+      r.lienzo = l ? l.width + "x" + l.height : "ninguno";
+      let plan = null;
+      try { plan = JSON.parse(sessionStorage.getItem("gestor.auto")); } catch (e) {}
+      if (!plan) return;
+      plan.res.push(r);
+      plan.i++;
+      sessionStorage.setItem("gestor.auto", JSON.stringify(plan));
+      location.href = plan.i < plan.lista.length ? "index.html?cfg=" + plan.lista[plan.i] + "&auto&t=" + Date.now() : "diag.html?resultados";
+    }, 12000);
+  }
 })();
 
 // ---------- Diagnóstico (abrir con ?diag en la dirección) ----------

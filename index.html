@@ -60,7 +60,7 @@
     })();
   </script>
   <!-- "?v=": cada versión publicada tiene su propia dirección, así el teléfono no usa una copia vieja. -->
-  <script src="gestor-web.js?v=202611142055"></script>
+  <script src="gestor-web.js?v=202611142103"></script>
 </head>
 <body>
   <div id="loading"><img src="icon-192.png" alt=""><p>Cargando…</p></div>
@@ -82,7 +82,7 @@
         if (document.visibilityState !== "visible" || r.width < 10 || r.height < 10) { setTimeout(arrancar, 100); return; }
         arrancada = true;
         var s = document.createElement("script");
-        s.src = (wasmGc && !/[?&]js\b/.test(location.search) ? "gestor.js" : "gestor-js.js") + "?v=202611142055";
+        s.src = (wasmGc && !/[?&]js\b/.test(location.search) ? "gestor.js" : "gestor-js.js") + "?v=202611142103";
         s.onerror = function () { document.querySelector("#loading p").textContent = "No se pudo cargar la app. Revisá la conexión y volvé a abrirla."; };
         document.body.appendChild(s);
       };

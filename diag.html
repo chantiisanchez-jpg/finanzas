@@ -15,7 +15,9 @@
 <body>
 <!-- Página simple (sin la app) para ver qué pasa en un iPhone: no borra los movimientos guardados. -->
 <h1>Diagnóstico de la app</h1>
-<button id="auto" style="background:#1D6247;color:#fff;font-weight:600">Prueba automática (2 minutos)</button>
+<button id="completa" style="background:#B3261E;color:#fff;font-weight:600">Prueba en pantalla completa (2 minutos)</button>
+<pre id="resultados" style="font-size:13px;display:none"></pre>
+<button id="auto" style="background:#1D6247;color:#fff;font-weight:600">Prueba automática en recuadro (2 minutos)</button>
 <pre id="tabla" style="font-size:13px">Tocá el botón de arriba y dejá el iPhone quieto, con la pantalla prendida, hasta que diga "Terminado".</pre>
 <pre id="info">Revisando…</pre>
 <button id="limpiar">Borrar copias guardadas de la app (no borra tus datos)</button>
@@ -101,6 +103,23 @@ function copiarViejo(texto) {
   t.value = texto; document.body.appendChild(t); t.select();
   try { document.execCommand("copy"); } catch (e) {}
   t.remove();
+}
+
+// Prueba en pantalla completa: la app se abre sola 8 veces (cada una con una variante) y vuelve acá.
+var LISTA_COMPLETA = [20, 0, 21, 22, 23, 24, 26, 25];
+document.getElementById("completa").onclick = function () {
+  sessionStorage.setItem("gestor.auto", JSON.stringify({ i: 0, lista: LISTA_COMPLETA, res: [] }));
+  location.href = "index.html?cfg=" + LISTA_COMPLETA[0] + "&auto&t=" + Date.now();
+};
+if (/[?&]resultados/.test(location.search)) {
+  var plan = null;
+  try { plan = JSON.parse(sessionStorage.getItem("gestor.auto")); } catch (e) {}
+  var out = document.getElementById("resultados");
+  out.style.display = "block";
+  out.textContent = plan ? "PANTALLA COMPLETA\nvariante | nullptr | se ve (colores) | cuadros | dibujos | lienzo\n" + plan.res.map(function (x) {
+    return x.cfg + " " + x.nombre + " | " + x.nullptr + " | " + (x.colores < 0 ? "-" : x.colores) + " | " + x.cuadros + " | " + x.dibujos + " | " + x.lienzo +
+      (x.primerError && !/nullptr/.test(x.primerError) ? " | " + x.primerError : "");
+  }).join("\n") + "\nTerminado. Sacá una captura de esta tabla." : "No hay resultados.";
 }
 
 // Prueba automática: abre la app con cada configuración gráfica y mide si se ve algo.
