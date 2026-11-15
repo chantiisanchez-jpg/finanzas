@@ -1,16 +1,16 @@
-/* Colores iguales a la app de Android (ui/theme/Theme.kt). */
+/* Paleta azul (finanzas). Ingresos en verde y gastos en rojo, como en cualquier resumen bancario. */
 :root {
-  --bg: #F3F5F0; --fg: #101410; --surface: #FFFFFF; --variant: #EDF0E9; --muted: #5D665D;
-  --outline: #C6CDC2; --line: #E4E8E0; --primary: #1D6247; --on-primary: #FFFFFF; --pcont: #DDF5C4;
-  --income: #15803D; --expense: #D93F45; --warning: #D97706; --info: #2563EB;
-  --hero1: #0E3B2C; --hero2: #1D6247; --on-hero: #F3F8EF; --accent: #C5F25A; --raised: #FFFFFF;
-  --sombra: 0 1px 2px rgba(16, 20, 16, .06);
+  --bg: #F2F5FA; --fg: #0F172A; --surface: #FFFFFF; --variant: #E8EEF7; --muted: #5B6B82;
+  --outline: #C5D0E0; --line: #E2E8F2; --primary: #1D4ED8; --on-primary: #FFFFFF; --pcont: #DCE7FF;
+  --income: #15803D; --expense: #DC2626; --warning: #D97706; --info: #0EA5E9;
+  --hero1: #0A1F4A; --hero2: #1D4ED8; --on-hero: #F1F5FF; --accent: #93C5FD; --raised: #FFFFFF;
+  --sombra: 0 1px 2px rgba(15, 23, 42, .07);
 }
 :root.oscuro {
-  --bg: #0B0E0C; --fg: #ECF1EA; --surface: #151916; --variant: #1E2420; --muted: #97A196;
-  --outline: #3A433C; --line: #242B26; --primary: #C5F25A; --on-primary: #10291E; --pcont: #22402F;
-  --income: #4ADE80; --expense: #FF6B6B; --warning: #FBBF24; --info: #60A5FA;
-  --hero1: #1C4A35; --hero2: #10291E; --raised: #323B34; --sombra: none;
+  --bg: #0A0F1A; --fg: #E6ECF5; --surface: #111827; --variant: #1A2333; --muted: #94A3B8;
+  --outline: #334155; --line: #1E293B; --primary: #60A5FA; --on-primary: #0B1A33; --pcont: #1E3A6B;
+  --income: #4ADE80; --expense: #F87171; --warning: #FBBF24; --info: #38BDF8;
+  --hero1: #1E3A8A; --hero2: #0B1530; --raised: #273449; --sombra: none;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { background: var(--bg); }
@@ -151,5 +151,5 @@ h2 { font-size: 19px; margin: 22px 0 10px; letter-spacing: -.2px; }
 
 /* Aviso flotante */
 #aviso { position: fixed; left: 18px; right: 18px; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 20; display: flex; justify-content: center; pointer-events: none; }
-#aviso div { background: #1B211C; color: #EFF3EC; padding: 12px 16px; border-radius: 14px; font-size: 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); opacity: 0; transform: translateY(8px); transition: all .2s; max-width: 520px; }
+#aviso div { background: #0F172A; color: #F1F5FF; padding: 12px 16px; border-radius: 14px; font-size: 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); opacity: 0; transform: translateY(8px); transition: all .2s; max-width: 520px; }
 #aviso div.ver { opacity: 1; transform: none; }

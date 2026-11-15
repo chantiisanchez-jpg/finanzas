@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "14/11 21:31";
+  var VERSION = "14/11 21:36";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -254,7 +254,7 @@
     var osc = data.themeMode === "DARK" || (data.themeMode !== "LIGHT" && oscuroSistema && oscuroSistema.matches);
     document.documentElement.classList.toggle("oscuro", !!osc);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", osc ? "#0B0E0C" : "#F3F5F0");
+    if (meta) meta.setAttribute("content", osc ? "#0A0F1A" : "#F2F5FA");
   }
   if (oscuroSistema && oscuroSistema.addEventListener) oscuroSistema.addEventListener("change", aplicarTema);
 
