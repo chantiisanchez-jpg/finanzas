@@ -53,7 +53,7 @@ h2 { font-size: 19px; margin: 22px 0 10px; letter-spacing: -.2px; }
 .hero .monto { font-size: 38px; font-weight: 800; letter-spacing: -1px; margin: 6px 0 2px; }
 .hero .ojo { color: var(--on-hero); opacity: .85; }
 .hero .ojo svg { width: 24px; height: 24px; }
-.acciones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 18px; }
+.acciones { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 18px; }
 .acciones button { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--on-hero); font-size: 13px; }
 .acciones span.c { width: 50px; height: 50px; border-radius: 50%; background: rgba(255, 255, 255, .12); display: grid; place-items: center; color: var(--accent); }
 .acciones svg { width: 24px; height: 24px; }
@@ -153,3 +153,19 @@ h2 { font-size: 19px; margin: 22px 0 10px; letter-spacing: -.2px; }
 #aviso { position: fixed; left: 18px; right: 18px; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 20; display: flex; justify-content: center; pointer-events: none; }
 #aviso div { background: #0F172A; color: #F1F5FF; padding: 12px 16px; border-radius: 14px; font-size: 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); opacity: 0; transform: translateY(8px); transition: all .2s; max-width: 520px; }
 #aviso div.ver { opacity: 1; transform: none; }
+
+/* Botón de cuentas / importar arriba a la derecha */
+.btnCuentas { display: flex; align-items: center; gap: 6px; background: var(--surface); color: var(--primary); border-radius: 20px; padding: 9px 13px; font-weight: 700; font-size: 14px; box-shadow: var(--sombra); margin-top: 8px; }
+.btnCuentas svg { width: 20px; height: 20px; }
+/* Selector $ / US$ del patrimonio */
+.moneda { display: inline-flex; background: rgba(255, 255, 255, .12); border-radius: 12px; padding: 2px; }
+.moneda button { color: var(--on-hero); opacity: .75; font-size: 13px; font-weight: 700; padding: 4px 9px; border-radius: 10px; }
+.moneda button.sel { background: rgba(255, 255, 255, .22); opacity: 1; }
+/* Paletas de color */
+.paletas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 8px; }
+.paletas button { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.paletas span { width: 44px; height: 44px; border-radius: 50%; border: 3px solid transparent; box-shadow: 0 0 0 1px var(--line); }
+.paletas button.sel { color: var(--fg); font-weight: 700; }
+.paletas button.sel span { border-color: var(--surface); box-shadow: 0 0 0 2.5px var(--primary); }
+.chicoSeg button { padding: 7px 6px; font-size: 14px; }
+.selCat { margin-top: 6px; border: 1px solid var(--outline); background: var(--surface); border-radius: 10px; padding: 4px 8px; font-size: 16px; max-width: 100%; }
