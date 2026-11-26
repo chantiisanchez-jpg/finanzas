@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 20:28";
+  var VERSION = "26/11 20:29";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -371,7 +371,17 @@
 
   /** Moneda elegida para el panel principal (botón $ / US$). */
   function monedaPanel() { return data.heroCurrency === "USD" ? "USD" : "ARS"; }
-  function enPanel(pesos) { return monedaPanel() === "USD" ? pesos / data.usdRate : pesos; }
+  /** Total del mes en la moneda del panel: lo que está en esa moneda va tal cual; lo otro se convierte. */
+  function totalMesEn(tipo, mes, moneda) {
+    var s = 0;
+    data.transactions.forEach(function (t) {
+      if (t.type !== tipo || mesDe(t.date) !== mes) return;
+      var mt = monedaTx(t);
+      if (mt === moneda) s += t.amount;
+      else s += moneda === "USD" ? t.amount / data.usdRate : t.amount * cotizTx(t);
+    });
+    return s;
+  }
 
   function textoDolar() {
     var t = "dólar " + (data.usdAuto ? nombreDolar(data.usdAuto).toLowerCase() + " " : "") + "$" + numero(data.usdRate, 2, true);
@@ -381,11 +391,14 @@
   function vistaInicio() {
     var d = new Date();
     var fecha = DIAS[d.getDay()].charAt(0).toUpperCase() + DIAS[d.getDay()].slice(1) + " " + d.getDate() + " de " + MESES[d.getMonth()];
-    var total = 0;
-    data.accounts.forEach(function (a) { if (!a.exclude) total += aPesos(a.balance, a.currency); });
-    var mon = monedaPanel(), otra = mon === "USD" ? "ARS" : "USD";
+    // Lo que hay de verdad en cada moneda: las cuentas en dólares son dólares reales y no cambian con el dólar
+    // del día; solo se convierte la otra moneda para sumarla.
+    var pesos = 0, dolares = 0;
+    data.accounts.forEach(function (a) { if (!a.exclude) { if (a.currency === "USD") dolares += a.balance; else pesos += a.balance; } });
+    var mon = monedaPanel();
+    var total = mon === "USD" ? dolares + pesos / data.usdRate : pesos + dolares * data.usdRate;
     var mes = mesActual();
-    var ing = totalMes("INCOME", mes), gas = totalMes("EXPENSE", mes);
+    var ing = totalMesEn("INCOME", mes, mon), gas = totalMesEn("EXPENSE", mes, mon);
     var pct = ing > 0 ? Math.min(100, gas / ing * 100) : (gas > 0 ? 100 : 0);
     var hayMes = data.transactions.some(function (t) { return mesDe(t.date) === mes; });
     var h = '<div class="entre" style="align-items:flex-start"><div><div class="fecha">' + fecha + "</div><h1>" + saludo() + "</h1></div>" +
@@ -393,17 +406,18 @@
     h += '<div class="hero"><div class="entre"><span style="opacity:.85">Patrimonio total</span><span class="fila" style="gap:8px">' +
       '<span class="moneda"><button data-acc="moneda" data-m="ARS" class="' + (mon === "ARS" ? "sel" : "") + '">$</button><button data-acc="moneda" data-m="USD" class="' + (mon === "USD" ? "sel" : "") + '">US$</button></span>' +
       '<button class="ojo" data-acc="privacidad">' + (data.privacy ? ICON.ojoNo : ICON.ojo) + "</button></span></div>" +
-      '<div class="monto">' + plata(enPanel(total), mon) + '</div><div style="opacity:.8;font-size:14px">≈ ' +
-      (data.privacy ? "•••••" : plata(otra === "USD" ? total / data.usdRate : total, otra)) + " · " + textoDolar() + "</div>" +
+      '<div class="monto">' + plata(total, mon) + '</div><div style="opacity:.8;font-size:14px">' +
+      (dolares && pesos ? "Pesos " + plata(pesos) + " · Dólares " + plata(dolares, "USD") + "<br>" : "") +
+      (mon === "USD" ? (pesos ? "Pesos convertidos al " : "") : (dolares ? "Dólares convertidos al " : "")) + textoDolar() + "</div>" +
       '<div class="acciones"><button data-acc="nuevo" data-tipo="EXPENSE"><span class="c">' + ICON.gasto + "</span>Gasto</button>" +
       '<button data-acc="nuevo" data-tipo="INCOME"><span class="c">' + ICON.ingreso + "</span>Ingreso</button>" +
       '<button data-acc="transferir"><span class="c">' + ICON.transferir + "</span>Transferir</button>" +
       '<button data-acc="importarExtracto"><span class="c">' + ICON.importar + "</span>Importar</button></div></div>";
     h += '<div class="tarjeta" style="margin-top:14px"><div class="entre"><b style="font-size:17px">Este mes</b><span class="chico">' + mesNombre(mes).split(" ")[0] + "</span></div>" +
-      '<div class="dos" style="margin-top:12px"><div class="fila"><span class="icono fondo-ingreso">' + ICON.ingreso + '</span><div><div class="chico">Ingresos</div><b>' + plata(enPanel(ing), mon) + "</b></div></div>" +
-      '<div class="fila"><span class="icono fondo-gasto">' + ICON.gasto + '</span><div><div class="chico">Gastos</div><b>' + plata(enPanel(gas), mon) + "</b></div></div></div>" +
+      '<div class="dos" style="margin-top:12px"><div class="fila"><span class="icono fondo-ingreso">' + ICON.ingreso + '</span><div><div class="chico">Ingresos</div><b>' + plata(ing, mon) + "</b></div></div>" +
+      '<div class="fila"><span class="icono fondo-gasto">' + ICON.gasto + '</span><div><div class="chico">Gastos</div><b>' + plata(gas, mon) + "</b></div></div></div>" +
       (hayMes ? '<div class="barra"><div style="width:' + pct.toFixed(1) + '%"></div></div><div class="entre chico"><span>' +
-        (ing > 0 ? "Gastaste el " + numero(gas / ing * 100, 0, false) + "% de tus ingresos" : "Sin ingresos este mes") + '</span><b class="' + (ing - gas >= 0 ? "ingreso" : "gasto") + '">' + plata(enPanel(ing - gas), mon, true) + "</b></div>"
+        (ing > 0 ? "Gastaste el " + numero(gas / ing * 100, 0, false) + "% de tus ingresos" : "Sin ingresos este mes") + '</span><b class="' + (ing - gas >= 0 ? "ingreso" : "gasto") + '">' + plata(ing - gas, mon, true) + "</b></div>"
         : '<div class="chico" style="margin-top:12px">Todavía no hay movimientos este mes.</div>') + "</div>";
     var ult = data.transactions.slice(0, 6);
     h += '<div class="entre"><h2>Últimos movimientos</h2>' + (data.transactions.length ? '<button class="link" data-acc="tab" data-tab="actividad">Ver todos</button>' : "") + "</div>";
