@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 20:41";
+  var VERSION = "26/11 20:59";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -763,12 +763,9 @@
 
     /** Hace falta cotización si el movimiento es en dólares o si la cuenta está en otra moneda. */
     function usaCotiz() { var a = cuenta(st.cuenta); return st.moneda === "USD" || (a && !esMixta(a) && a.currency !== st.moneda); }
-    /** Monedas posibles para la cuenta elegida (si se edita un movimiento viejo, también la suya). */
-    function monedasPosibles() {
-      var m = monedasDe(cuenta(st.cuenta)).slice();
-      if (ed && ed.accountId === st.cuenta && m.indexOf(monedaTx(ed)) < 0) m.push(monedaTx(ed));
-      return m;
-    }
+    /** Siempre se puede cargar en pesos o en dólares: si la cuenta es de la otra moneda, se convierte sola
+        con la cotización elegida (la de la cuenta va primero). */
+    function monedasPosibles() { return monedasDe(cuenta(st.cuenta))[0] === "USD" ? ["USD", "ARS"] : ["ARS", "USD"]; }
     function cotizActual() { return st.casa ? st.cotiz : leerMonto(st.cotizManual); }
     function mostrarCotiz(hoja) {
       var c = hoja.querySelector("#hCotiz");
@@ -779,7 +776,7 @@
       if (!(v > 0) || !(k > 0)) { e.textContent = ""; return; }
       var pesos = st.moneda === "USD" ? v * k : v, dolares = st.moneda === "USD" ? v : v / k;
       e.innerHTML = "= <b>" + plata(pesos) + "</b> · " + plata(dolares, "USD") +
-        (a && !esMixta(a) && a.currency !== st.moneda ? '<br><span class="muy-chico">' + (st.tipo === "EXPENSE" ? "Se descuentan " : "Se suman ") + plata(a.currency === "USD" ? dolares : pesos, a.currency) + " de " + esc(a.name) + "</span>" : "");
+        (a && !esMixta(a) && a.currency !== st.moneda ? '<br><span class="muy-chico">' + (st.tipo === "EXPENSE" ? "Se descuentan " : "Se suman ") + plata(a.currency === "USD" ? dolares : pesos, a.currency) + (st.tipo === "EXPENSE" ? " de " : " a ") + esc(a.name) + "</span>" : "");
     }
     function pedirCotiz(hoja) {
       if (!usaCotiz() || !st.casa) return;
@@ -796,14 +793,11 @@
       var acento = gasto ? "var(--expense)" : "var(--income)";
       var h = (ed ? "<h3>Editar " + (gasto ? "gasto" : "ingreso") + "</h3>" :
         '<div class="segmento" style="margin-bottom:6px"><button data-h="tipo" data-v="EXPENSE" class="' + (gasto ? "sel" : "") + '">Gasto</button><button data-h="tipo" data-v="INCOME" class="' + (gasto ? "" : "sel") + '">Ingreso</button></div>');
-      var posibles = monedasPosibles();
-      if (posibles.indexOf(st.moneda) < 0) st.moneda = posibles[0];
-      h += posibles.length > 1
-        ? '<div class="segmento chicoSeg" style="margin-top:8px"><button data-h="moneda" data-v="ARS" class="' + (st.moneda === "ARS" ? "sel" : "") + '">$ Pesos</button><button data-h="moneda" data-v="USD" class="' + (st.moneda === "USD" ? "sel" : "") + '">US$ Dólares</button></div>'
-        : '<div class="chico" style="text-align:center;margin-top:8px">Cuenta en ' + (st.moneda === "USD" ? "dólares: se carga en dólares" : "pesos: se carga en pesos") + "</div>";
+      h += '<div class="segmento chicoSeg" style="margin-top:8px"><button data-h="moneda" data-v="ARS" class="' + (st.moneda === "ARS" ? "sel" : "") + '">$ Pesos</button><button data-h="moneda" data-v="USD" class="' + (st.moneda === "USD" ? "sel" : "") + '">US$ Dólares</button></div>';
       h += '<div class="montoGrande"><div class="chico">Monto en ' + (st.moneda === "USD" ? "dólares" : "pesos") + '</div><input id="hMonto" inputmode="decimal" placeholder="' + (st.moneda === "USD" ? "US$ 0" : "$ 0") + '" value="' + esc(st.monto) + '" autocomplete="off"><div class="chico" id="hCalc"></div></div>';
       if (usaCotiz()) {
-        h += '<div class="detalle" style="margin-top:4px"><div class="entre"><b style="font-size:14px">Dólar de ese día</b><span class="muy-chico">' + fechaLarga(st.fecha) + "</span></div>" +
+        var ac = cuenta(st.cuenta), convierte = ac && !esMixta(ac) && ac.currency !== st.moneda;
+        h += '<div class="detalle" style="margin-top:4px"><div class="entre"><b style="font-size:14px">' + (convierte ? "Se pasa a " + (ac.currency === "USD" ? "dólares" : "pesos") + " con el dólar de ese día" : "Dólar de ese día") + "</b>" + '<span class="muy-chico">' + fechaLarga(st.fecha) + "</span></div>" +
           '<div class="chips" style="margin-top:8px">' + DOLARES.map(function (o) {
             return '<button class="chip' + (st.casa === o[0] ? " sel" : "") + '" data-h="casa" data-v="' + o[0] + '">' + o[1] + "</button>";
           }).join("") + "</div>" +
@@ -861,9 +855,8 @@
       };
       hoja.querySelector("#hCuenta").onchange = function (e) {
         st.cuenta = e.target.value;
-        // La moneda sigue a la cuenta elegida (una cuenta en pesos solo acepta pesos; una en dólares, solo dólares).
-        var pos = monedasDe(cuenta(st.cuenta));
-        if (!st.monedaTocada || pos.indexOf(st.moneda) < 0) st.moneda = pos[0];
+        // La moneda sigue a la cuenta elegida, salvo que se haya elegido a mano (si no coincide, se convierte).
+        if (!st.monedaTocada) st.moneda = monedasDe(cuenta(st.cuenta))[0];
         montar(hoja);
       };
       hoja.querySelector("#hComentario").oninput = function (e) { st.comentario = e.target.value; };
