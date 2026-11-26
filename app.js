@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 20:15";
+  var VERSION = "26/11 20:28";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -198,7 +198,18 @@
   function cuenta(id) { for (var i = 0; i < data.accounts.length; i++) if (data.accounts[i].id === id) return data.accounts[i]; return null; }
   function cuentaPred() { for (var i = 0; i < data.accounts.length; i++) if (data.accounts[i]["default"]) return data.accounts[i]; return data.accounts[0]; }
   function aPesos(v, moneda) { return moneda === "USD" ? v * data.usdRate : v; }
-  function montoPesos(t) { var a = cuenta(t.accountId); return aPesos(t.amount, a ? a.currency : "ARS"); }
+  /** Moneda del movimiento: la elegida al cargarlo o, en los anteriores, la de su cuenta. */
+  function monedaTx(t) { if (t.currency) return t.currency; var a = cuenta(t.accountId); return a ? a.currency : "ARS"; }
+  /** Cotización guardada en el movimiento (la del día en que se hizo); si no tiene, la actual. */
+  function cotizTx(t) { return t.rate > 0 ? t.rate : data.usdRate; }
+  /** El movimiento en pesos, con su propia cotización. */
+  function montoPesos(t) { return monedaTx(t) === "USD" ? t.amount * cotizTx(t) : t.amount; }
+  /** Cuánto mueve el saldo de su cuenta, en la moneda de la cuenta (un gasto en US$ desde una cuenta en pesos descuenta pesos). */
+  function montoEnCuenta(t) {
+    var a = cuenta(t.accountId), mc = a ? a.currency : "ARS", mt = monedaTx(t);
+    if (mc === mt) return t.amount;
+    return mt === "USD" ? t.amount * cotizTx(t) : t.amount / cotizTx(t);
+  }
   function categorias(tipo) { return tipo === "EXPENSE" ? CAT_GASTO.concat(data.customExpense) : CAT_INGRESO.concat(data.customIncome); }
   function claveMemoria(tipo, nombre) { return (tipo === "EXPENSE" ? "E:" : "I:") + claveComercio(nombre); }
   function sugerir(nombre, tipo) {
@@ -215,7 +226,7 @@
     return disp.indexOf("Otros") >= 0 ? "Otros" : disp[0];
   }
   function recordar(t) { if (t.name) data.categoryMemory[claveMemoria(t.type, t.name)] = t.category; }
-  function efecto(t) { return t.type === "EXPENSE" ? -t.amount : t.amount; }
+  function efecto(t) { var v = montoEnCuenta(t); return t.type === "EXPENSE" ? -v : v; }
   function ordenar() { data.transactions.sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; }); }
 
   function agregarMov(t) {
@@ -352,7 +363,7 @@
     var sub = esc(t.category) + " · " + esc(a ? a.name : "—") + (t.items && t.items.length ? " · " + t.items.length + " ítems" : "");
     return '<button class="mov" data-acc="detalle" data-id="' + esc(t.id) + '">' + iconoCat(t.category) +
       '<span class="txt"><div class="nom">' + esc(t.name || t.category) + '</div><div class="sub">' + sub + "</div></span>" +
-      '<span class="der"><div class="m ' + (gasto ? "" : "ingreso") + '">' + plata(gasto ? -t.amount : t.amount, a ? a.currency : "ARS", !gasto) + "</div>" +
+      '<span class="der"><div class="m ' + (gasto ? "" : "ingreso") + '">' + plata(gasto ? -t.amount : t.amount, monedaTx(t), !gasto) + "</div>" +
       (mostrarFecha ? '<div class="muy-chico">' + fechaCorta(t.date) + "</div>" : "") + "</span></button>";
   }
 
@@ -478,6 +489,7 @@
     h += '<h2>Gastos por categoría</h2><div class="tarjeta">' + (cats.length ? cats.map(function (c) {
       return '<div class="cat"><div class="entre"><span class="fila" style="gap:8px"><span class="punto" style="background:' + colorCat(c[0]) + '"></span>' + esc(c[0]) + "</span><b>" + plata(c[1]) + '</b></div><div class="b"><div style="width:' + (c[1] / cats[0][1] * 100).toFixed(1) + "%;background:" + colorCat(c[0]) + '"></div></div></div>';
     }).join("") : '<div class="chico">Sin gastos en este mes.</div>') + "</div>";
+    h += seccionAhorro(mes);
     var seis = [], max = 0;
     for (var i = 5; i >= 0; i--) {
       var m = mesMover(mes, -i), a = totalMes("INCOME", m), g = totalMes("EXPENSE", m);
@@ -488,6 +500,95 @@
         return '<div class="col"><div class="barras"><div style="height:' + (max ? x[1] / max * 120 : 0).toFixed(0) + 'px;background:var(--info)"></div><div style="height:' + (max ? x[2] / max * 120 : 0).toFixed(0) + 'px;background:var(--expense)"></div></div><span class="muy-chico">' + MESES_C[+x[0].slice(5, 7) - 1] + "</span></div>";
       }).join("") + "</div></div>";
     return h;
+  }
+
+  /** Movimientos que cambian tus dólares: en US$ y en una cuenta en dólares (un gasto en US$ pagado con pesos no los toca). */
+  function esDeDolares(t) { var a = cuenta(t.accountId); return monedaTx(t) === "USD" && a && a.currency === "USD"; }
+  /** Dólares que tenés según esos movimientos, con el costo promedio (lo que pagaste por cada uno). */
+  function dolaresHasta(fecha) {
+    var h = 0, costo = 0;
+    data.transactions.filter(function (t) { return esDeDolares(t) && t.date <= fecha; })
+      .sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; })
+      .forEach(function (t) {
+        if (t.type === "INCOME") { h += t.amount; costo += t.amount * cotizTx(t); }
+        else if (h > 0) { var sale = Math.min(t.amount, h); costo -= costo / h * sale; h -= sale; }
+      });
+    return { dolares: h, costo: costo };
+  }
+
+  function seccionAhorro(mes) {
+    var fin = mes + "-" + String(diasDelMes(mes)).padStart(2, "0");
+    var ing = 0, gas = 0;
+    data.transactions.forEach(function (t) { if (t.date <= fin) { if (t.type === "INCOME") ing += montoPesos(t); else gas += montoPesos(t); } });
+    var acum = ing - gas;
+    var h = '<h2>Ahorro y dólares</h2><div class="tarjeta"><div class="chico">Ahorro acumulado (ingresos menos gastos, hasta ' + mesNombre(mes).toLowerCase() + ")</div>" +
+      '<div class="kpi"><div class="valor ' + (acum >= 0 ? "ingreso" : "gasto") + '">' + plata(acum, "ARS", true) + '</div></div><div class="muy-chico">≈ ' + plata(acum / data.usdRate, "USD", true) + " al dólar de hoy</div>";
+    // Ahorro de cada mes (últimos 6): positivo verde, negativo rojo.
+    var meses = [], maxAbs = 1;
+    for (var i = 5; i >= 0; i--) {
+      var m = mesMover(mes, -i), v = totalMes("INCOME", m) - totalMes("EXPENSE", m);
+      meses.push([m, v]); maxAbs = Math.max(maxAbs, Math.abs(v));
+    }
+    h += '<div class="chico" style="margin-top:14px">Ahorro de cada mes</div><div class="ahorroMeses">' + meses.map(function (x) {
+      var alto = Math.round(Math.abs(x[1]) / maxAbs * 54);
+      return '<div class="col"><div class="mitad">' + (x[1] > 0 ? '<div style="height:' + alto + 'px;background:var(--income)"></div>' : "") + '</div><div class="mitad abajo">' +
+        (x[1] < 0 ? '<div style="height:' + alto + 'px;background:var(--expense)"></div>' : "") + '</div><span class="muy-chico">' + MESES_C[+x[0].slice(5, 7) - 1] + "</span></div>";
+    }).join("") + "</div></div>";
+
+    var d = dolaresHasta(hoy());
+    h += '<div class="tarjeta" style="margin-top:12px">';
+    if (d.dolares < 0.005) {
+      h += '<b>Tus dólares</b><div class="chico" style="margin-top:6px">Todavía no cargaste dólares. Creá una cuenta en dólares y cargá un ingreso en <b>US$</b> (por ejemplo, una compra de dólares): se guarda el dólar de ese día y acá vas a ver si ganás o perdés.</div></div>';
+      return h;
+    }
+    var casa = data.usdAuto || "oficial";
+    var valor = d.dolares * data.usdRate, gan = valor - d.costo, pct = d.costo > 0 ? gan / d.costo * 100 : 0;
+    var gana = gan >= 0;
+    h += '<div class="entre"><b>Tus dólares</b><span class="etiqueta" style="' + (gana ? "background:rgba(21,128,61,.14);color:var(--income)" : "background:rgba(220,38,38,.14);color:var(--expense)") + '">' + (gana ? "Estás ganando" : "Estás perdiendo") + "</span></div>" +
+      '<div class="kpi"><div class="valor">' + plata(d.dolares, "USD") + "</div></div>" +
+      '<div class="clave"><span>Pagaste en promedio</span><span>$' + numero(d.costo / d.dolares, 2, true) + " por dólar</span></div>" +
+      '<div class="clave"><span>Te costaron</span><span>' + plata(d.costo) + "</span></div>" +
+      '<div class="clave"><span>Hoy valen (dólar ' + nombreDolar(casa).toLowerCase() + " $" + numero(data.usdRate, 2, true) + ")</span><span>" + plata(valor) + "</span></div>" +
+      '<div class="clave"><span>' + (gana ? "Ganancia" : "Pérdida") + '</span><span class="' + (gana ? "ingreso" : "gasto") + '">' + plata(gan, "ARS", true) + " (" + (pct >= 0 ? "+" : "") + numero(pct, 1, false) + "%)</span></div>" +
+      '<div class="chico" style="margin-top:12px">Lo que pagaste y lo que valen, mes a mes</div><div id="graficoDolares" class="chico" style="margin-top:6px">Cargando el gráfico…</div></div>';
+    setTimeout(function () { dibujarGraficoDolares(casa); }, 0);
+    return h;
+  }
+
+  /** Gráfico de líneas: costo de tus dólares vs. su valor a fin de cada mes (con el dólar de ese momento). */
+  function dibujarGraficoDolares(casa) {
+    serieDolar(casa).then(function (serie) {
+      var cont = document.getElementById("graficoDolares");
+      if (!cont) return;
+      var usd = data.transactions.filter(esDeDolares).map(function (t) { return t.date; }).sort();
+      var desde = mesDe(usd[0]), hasta = mesActual(), meses = [];
+      for (var m = desde; m <= hasta && meses.length < 24; m = mesMover(m, 1)) meses.push(m);
+      if (meses.length > 12) meses = meses.slice(-12);
+      var puntos = meses.map(function (m) {
+        var fin = m === hasta ? hoy() : m + "-" + String(diasDelMes(m)).padStart(2, "0");
+        var d = dolaresHasta(fin);
+        var k = m === hasta ? data.usdRate : (cotizEnSerie(serie, fin) || data.usdRate);
+        return { m: m, costo: d.costo, valor: d.dolares * k };
+      });
+      var max = 1;
+      puntos.forEach(function (p) { max = Math.max(max, p.costo, p.valor); });
+      var W = 320, H = 150, L = 16, Rr = 16, T = 10, B = 22;
+      var x = function (i) { return L + (puntos.length === 1 ? (W - L - Rr) / 2 : i * (W - L - Rr) / (puntos.length - 1)); };
+      var y = function (v) { return T + (1 - v / max) * (H - T - B); };
+      var linea = function (campo) { return puntos.map(function (p, i) { return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p[campo]).toFixed(1); }).join(" "); };
+      var svg = '<svg viewBox="0 0 ' + W + " " + H + '" style="width:100%;height:auto">' +
+        [0.25, 0.5, 0.75, 1].map(function (f) { return '<line x1="' + L + '" x2="' + (W - Rr) + '" y1="' + y(max * f).toFixed(1) + '" y2="' + y(max * f).toFixed(1) + '" stroke="var(--line)" stroke-width="1"/>'; }).join("") +
+        '<path d="' + linea("costo") + '" fill="none" stroke="var(--muted)" stroke-width="2.5" stroke-dasharray="5 4" stroke-linecap="round"/>' +
+        '<path d="' + linea("valor") + '" fill="none" stroke="var(--primary)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        puntos.map(function (p, i) { return '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(p.valor).toFixed(1) + '" r="3.5" fill="var(--primary)"/>'; }).join("") +
+        puntos.map(function (p, i) {
+          return (puntos.length <= 6 || i % 2 === puntos.length % 2 || i === puntos.length - 1) ? '<text x="' + x(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="10" fill="var(--muted)">' + MESES_C[+p.m.slice(5, 7) - 1] + "</text>" : "";
+        }).join("") + "</svg>";
+      cont.innerHTML = svg + '<div class="fila chico" style="gap:6px;margin-top:4px"><span class="punto" style="background:var(--primary)"></span>Lo que valen <span class="punto" style="background:var(--muted);margin-left:10px"></span>Lo que pagaste</div>';
+    }).catch(function () {
+      var cont = document.getElementById("graficoDolares");
+      if (cont) cont.textContent = "No se pudo cargar el historial del dólar (sin conexión).";
+    });
   }
 
   function vistaAjustes() {
@@ -521,6 +622,54 @@
     return h;
   }
 
+  // ---------- Cotización del dólar de un día ----------
+  // Hoy: DolarApi. Días anteriores: ArgentinaDatos (historial público y gratis). Si ese día no hubo
+  // cotización (fin de semana, feriado), se usa la del último día hábil anterior.
+  var cacheCotiz = {};
+  function jsonDe(url) { return fetch(url, { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }); }
+  function cotizacionDe(fecha, casa) {
+    var k = casa + "|" + fecha;
+    if (!cacheCotiz[k]) {
+      var p = fecha >= hoy()
+        ? jsonDe("https://dolarapi.com/v1/dolares/" + casa).then(function (x) { return { valor: Number(x.venta), fecha: hoy() }; })
+        : historico(fecha, casa, 0);
+      cacheCotiz[k] = p.then(function (x) { if (!(x.valor > 0)) throw new Error("sin precio"); return x; })
+        .catch(function (e) { delete cacheCotiz[k]; throw e; });
+    }
+    return cacheCotiz[k];
+  }
+  function historico(fecha, casa, intento) {
+    if (intento > 7) return Promise.reject(new Error("sin cotización"));
+    var p = fecha.split("-");
+    return fetch("https://api.argentinadatos.com/v1/cotizaciones/dolares/" + casa + "/" + p[0] + "/" + p[1] + "/" + p[2], { cache: "force-cache" })
+      .then(function (r) {
+        if (r.ok) return r.json().then(function (x) { return { valor: Number(x.venta), fecha: fecha }; });
+        if (r.status === 404) return historico(sumarDias(fecha, -1), casa, intento + 1);
+        throw new Error("HTTP " + r.status);
+      });
+  }
+  // Serie completa (para el gráfico de los dólares): se baja una vez por día.
+  var serieP = {};
+  function serieDolar(casa) {
+    if (!serieP[casa]) {
+      var clave = "gestor.serie." + casa, guardada = null;
+      try { guardada = JSON.parse(localStorage.getItem(clave)); } catch (e) {}
+      if (guardada && guardada.dia === hoy() && guardada.datos) serieP[casa] = Promise.resolve(guardada.datos);
+      else serieP[casa] = jsonDe("https://api.argentinadatos.com/v1/cotizaciones/dolares/" + casa).then(function (lista) {
+        var datos = {};
+        lista.forEach(function (x) { datos[x.fecha] = x.venta; });
+        try { localStorage.setItem(clave, JSON.stringify({ dia: hoy(), datos: datos })); } catch (e) {}
+        return datos;
+      }).catch(function (e) { delete serieP[casa]; throw e; });
+    }
+    return serieP[casa];
+  }
+  /** Última cotización de la serie en o antes de una fecha. */
+  function cotizEnSerie(serie, fecha) {
+    for (var i = 0; i < 12; i++) { var f = sumarDias(fecha, -i); if (serie[f]) return serie[f]; }
+    return null;
+  }
+
   // ---------- Hoja: nuevo / editar movimiento ----------
 
   function hojaMovimiento(opc) {
@@ -534,16 +683,58 @@
       cuenta: ed ? ed.accountId : (opc.cuenta || (cuentaPred() || {}).id),
       fecha: ed ? ed.date : hoy(),
       comentario: ed ? (ed.comment || "") : "",
+      // Moneda del movimiento y cotización del dólar de ese día (automática o a mano).
+      moneda: ed ? monedaTx(ed) : (opc.moneda || (cuenta(opc.cuenta || (cuentaPred() || {}).id) || {}).currency || "ARS"),
+      casa: ed && ed.rateSource ? (ed.rateSource === "manual" ? "" : ed.rateSource) : (data.usdAuto || "oficial"),
+      cotiz: ed && ed.rate ? ed.rate : null,
+      cotizFecha: null,
+      cotizManual: ed && ed.rateSource === "manual" && ed.rate ? plano(ed.rate) : "",
+      cotizEstado: "",
+      monedaTocada: !!(ed || opc.moneda),
       items: ed && ed.items ? ed.items.map(function (i) { return { name: i.name, amount: i.amount, quantity: i.quantity == null ? 1 : i.quantity }; }) : []
     };
     if (!st.cat) st.cat = sugerir(st.nombre, st.tipo);
+
+    /** Hace falta cotización si el movimiento es en dólares o si la cuenta está en otra moneda. */
+    function usaCotiz() { var a = cuenta(st.cuenta); return st.moneda === "USD" || (a && a.currency !== st.moneda); }
+    function cotizActual() { return st.casa ? st.cotiz : leerMonto(st.cotizManual); }
+    function mostrarCotiz(hoja) {
+      var c = hoja.querySelector("#hCotiz");
+      if (c) c.textContent = st.cotizEstado === "buscando" ? "Buscando la cotización…" : st.cotizEstado === "error" ? "No se pudo traer la cotización (sin conexión). Elegí Manual y cargala a mano." :
+        st.cotiz ? "Dólar " + nombreDolar(st.casa).toLowerCase() + ": $" + numero(st.cotiz, 2, true) + (st.cotizFecha && st.cotizFecha !== st.fecha ? " (del " + fechaLarga(st.cotizFecha) + ", último día hábil)" : "") : "";
+      var e = hoja.querySelector("#hEquiv"), v = leerMonto(st.monto), k = cotizActual(), a = cuenta(st.cuenta);
+      if (!e) return;
+      if (!(v > 0) || !(k > 0)) { e.textContent = ""; return; }
+      var pesos = st.moneda === "USD" ? v * k : v, dolares = st.moneda === "USD" ? v : v / k;
+      e.innerHTML = "= <b>" + plata(pesos) + "</b> · " + plata(dolares, "USD") +
+        (a && a.currency !== st.moneda ? '<br><span class="muy-chico">' + (st.tipo === "EXPENSE" ? "Se descuentan " : "Se suman ") + plata(a.currency === "USD" ? dolares : pesos, a.currency) + " de " + esc(a.name) + "</span>" : "");
+    }
+    function pedirCotiz(hoja) {
+      if (!usaCotiz() || !st.casa) return;
+      var casa = st.casa, fecha = st.fecha;
+      st.cotizEstado = "buscando"; mostrarCotiz(hoja);
+      cotizacionDe(fecha, casa).then(function (x) {
+        if (st.casa !== casa || st.fecha !== fecha) return;
+        st.cotiz = r2(x.valor); st.cotizFecha = x.fecha; st.cotizEstado = ""; mostrarCotiz(hoja);
+      }).catch(function () { if (st.casa === casa && st.fecha === fecha) { st.cotizEstado = "error"; mostrarCotiz(hoja); } });
+    }
 
     function html() {
       var gasto = st.tipo === "EXPENSE";
       var acento = gasto ? "var(--expense)" : "var(--income)";
       var h = (ed ? "<h3>Editar " + (gasto ? "gasto" : "ingreso") + "</h3>" :
         '<div class="segmento" style="margin-bottom:6px"><button data-h="tipo" data-v="EXPENSE" class="' + (gasto ? "sel" : "") + '">Gasto</button><button data-h="tipo" data-v="INCOME" class="' + (gasto ? "" : "sel") + '">Ingreso</button></div>');
-      h += '<div class="montoGrande"><div class="chico">Monto en ' + ((cuenta(st.cuenta) || {}).currency || "ARS") + '</div><input id="hMonto" inputmode="decimal" placeholder="$ 0" value="' + esc(st.monto) + '" autocomplete="off"><div class="chico" id="hCalc"></div></div>';
+      h += '<div class="segmento chicoSeg" style="margin-top:8px"><button data-h="moneda" data-v="ARS" class="' + (st.moneda === "ARS" ? "sel" : "") + '">$ Pesos</button><button data-h="moneda" data-v="USD" class="' + (st.moneda === "USD" ? "sel" : "") + '">US$ Dólares</button></div>';
+      h += '<div class="montoGrande"><div class="chico">Monto en ' + (st.moneda === "USD" ? "dólares" : "pesos") + '</div><input id="hMonto" inputmode="decimal" placeholder="' + (st.moneda === "USD" ? "US$ 0" : "$ 0") + '" value="' + esc(st.monto) + '" autocomplete="off"><div class="chico" id="hCalc"></div></div>';
+      if (usaCotiz()) {
+        h += '<div class="detalle" style="margin-top:4px"><div class="entre"><b style="font-size:14px">Dólar de ese día</b><span class="muy-chico">' + fechaLarga(st.fecha) + "</span></div>" +
+          '<div class="chips" style="margin-top:8px">' + DOLARES.map(function (o) {
+            return '<button class="chip' + (st.casa === o[0] ? " sel" : "") + '" data-h="casa" data-v="' + o[0] + '">' + o[1] + "</button>";
+          }).join("") + "</div>" +
+          (st.casa ? '<div class="chico" id="hCotiz" style="margin-top:8px"></div>'
+            : '<label class="campo" style="background:var(--surface)"><span>Pesos por dólar</span><input id="hCotizManual" inputmode="decimal" value="' + esc(st.cotizManual) + '" placeholder="Ej: 1.650"></label>') +
+          '<div class="chico" id="hEquiv" style="margin-top:6px"></div></div>';
+      }
       h += '<label class="campo"><span>Comercio o concepto</span><input id="hNombre" value="' + esc(st.nombre) + '" autocomplete="off" autocapitalize="sentences" placeholder="Ej: Supermercado"></label>';
       h += '<div class="chico" style="margin:12px 0 8px;font-weight:600;color:var(--fg)">Categoría</div><div class="chips" style="--acento:' + acento + '">' +
         categorias(st.tipo).map(function (c) { return '<button class="chip' + (c === st.cat ? " sel" : "") + '" data-h="cat" data-v="' + esc(c) + '"><span class="punto" style="background:' + colorCat(c) + '"></span>' + esc(c) + "</button>"; }).join("") +
@@ -575,7 +766,12 @@
         hoja.querySelector("#hCalc").textContent = esExpresion(monto.value) && v != null ? "= " + plata(v) : "";
       }
       calc();
-      monto.oninput = function () { st.monto = monto.value; calc(); };
+      monto.oninput = function () { st.monto = monto.value; calc(); mostrarCotiz(hoja); };
+      var manual = hoja.querySelector("#hCotizManual");
+      if (manual) manual.oninput = function () { st.cotizManual = manual.value; mostrarCotiz(hoja); };
+      // Editando: se mantiene la cotización guardada salvo que se cambie la fecha o el tipo de dólar.
+      if (usaCotiz() && st.casa && !(ed && st.cotiz && st.fecha === ed.date && st.casa === ed.rateSource)) pedirCotiz(hoja);
+      else mostrarCotiz(hoja);
       nombre.oninput = function () {
         st.nombre = nombre.value;
         if (!st.catTocada) {
@@ -587,16 +783,23 @@
           }
         }
       };
-      hoja.querySelector("#hCuenta").onchange = function (e) { st.cuenta = e.target.value; };
+      hoja.querySelector("#hCuenta").onchange = function (e) {
+        st.cuenta = e.target.value;
+        // La moneda sigue a la cuenta elegida, salvo que se haya cambiado a mano.
+        if (!st.monedaTocada) st.moneda = (cuenta(st.cuenta) || {}).currency || "ARS";
+        montar(hoja);
+      };
       hoja.querySelector("#hComentario").oninput = function (e) { st.comentario = e.target.value; };
-      hoja.querySelector("#hFecha").onchange = function (e) { if (e.target.value) { st.fecha = e.target.value; montar(hoja); } };
+      hoja.querySelector("#hFecha").onchange = function (e) { if (e.target.value) { st.fecha = e.target.value; st.cotiz = null; montar(hoja); } };
       hoja.onclick = function (e) {
         var b = e.target.closest ? e.target.closest("[data-h]") : null;
         if (!b) return;
         var h = b.getAttribute("data-h"), v = b.getAttribute("data-v");
         if (h === "tipo") { st.tipo = v; if (!st.catTocada) st.cat = sugerir(st.nombre, st.tipo); else if (categorias(v).indexOf(st.cat) < 0) { st.cat = sugerir(st.nombre, v); st.catTocada = false; } montar(hoja); }
         else if (h === "cat") { st.cat = v; st.catTocada = true; montar(hoja); }
-        else if (h === "fecha") { st.fecha = v; montar(hoja); }
+        else if (h === "fecha") { st.fecha = v; st.cotiz = null; montar(hoja); }
+        else if (h === "moneda") { st.moneda = v; st.monedaTocada = true; montar(hoja); }
+        else if (h === "casa") { st.casa = v; st.cotiz = null; montar(hoja); }
         else if (h === "nuevaCat") {
           var n = prompt("Nombre de la nueva categoría");
           if (n && n.trim()) { var c = agregarCategoria(st.tipo, n); if (c) { st.cat = c; st.catTocada = true; } montar(hoja); }
@@ -618,14 +821,17 @@
         if (v == null || !(v > 0)) { err.textContent = "Ingresá un monto mayor a cero."; monto.focus(); return; }
         if (!st.cuenta || !cuenta(st.cuenta)) { err.textContent = "Elegí una cuenta."; return; }
         var nombreFinal = st.nombre.trim() || st.cat;
+        var k = cotizActual();
+        if (usaCotiz() && !(k > 0)) { err.textContent = st.cotizEstado === "buscando" ? "Esperá un segundo: se está buscando la cotización." : "Falta la cotización del dólar."; return; }
         var t = {
           id: ed ? ed.id : nuevoId("tx"), type: st.tipo, name: nombreFinal, amount: r2(v), category: st.cat,
-          accountId: st.cuenta, date: st.fecha, comment: st.comentario.trim()
+          accountId: st.cuenta, date: st.fecha, comment: st.comentario.trim(), currency: st.moneda
         };
+        if (usaCotiz()) { t.rate = r2(k); t.rateSource = st.casa || "manual"; }
         if (ed && ed.externalId) t.externalId = ed.externalId;
         if (st.items.length) t.items = st.items;
         if (ed) { editarMov(t); aviso("Cambios guardados."); }
-        else { agregarMov(t); aviso((st.tipo === "EXPENSE" ? "Gasto" : "Ingreso") + " de " + plata(t.amount) + " guardado."); }
+        else { agregarMov(t); aviso((st.tipo === "EXPENSE" ? "Gasto" : "Ingreso") + " de " + plata(t.amount, t.currency) + " guardado."); }
         cerrarHoja();
         render();
       };
@@ -649,11 +855,13 @@
     var t = null;
     data.transactions.forEach(function (x) { if (x.id === id) t = x; });
     if (!t) return;
-    var a = cuenta(t.accountId), gasto = t.type === "EXPENSE", mon = a ? a.currency : "ARS";
+    var a = cuenta(t.accountId), gasto = t.type === "EXPENSE", mon = monedaTx(t);
     var h = '<div style="text-align:center"><div style="display:flex;justify-content:center">' + iconoCat(t.category, 56) + "</div>" +
       '<div style="font-weight:600;margin-top:10px">' + esc(t.name) + '</div><div style="font-size:34px;font-weight:800;letter-spacing:-1px" class="' + (gasto ? "" : "ingreso") + '">' + plata(gasto ? -t.amount : t.amount, mon, !gasto) + "</div></div>";
     h += '<div style="margin-top:14px"><div class="clave"><span>Tipo</span><span>' + (gasto ? "Gasto" : "Ingreso") + '</span></div><div class="clave"><span>Categoría</span><span>' + esc(t.category) + "</span></div>" +
       '<div class="clave"><span>Cuenta</span><span>' + esc(a ? a.name : "—") + '</span></div><div class="clave"><span>Fecha</span><span>' + fechaLarga(t.date) + "</span></div>" +
+      (mon === "USD" || (a && a.currency !== mon) ? '<div class="clave"><span>Cotización</span><span>' + (t.rateSource && t.rateSource !== "manual" ? "Dólar " + nombreDolar(t.rateSource).toLowerCase() + " " : "") + "$" + numero(cotizTx(t), 2, true) + "</span></div>" +
+        '<div class="clave"><span>En pesos</span><span>' + plata(montoPesos(t)) + "</span></div>" : "") +
       (t.comment ? '<div class="clave"><span>Comentario</span><span>' + esc(t.comment) + "</span></div>" : "") + "</div>";
     if (t.items && t.items.length) {
       var suma = 0; t.items.forEach(function (i) { suma += i.amount; });
@@ -669,7 +877,7 @@
         if (!b) return;
         var d = b.getAttribute("data-d");
         if (d === "editar") hojaMovimiento({ editar: t });
-        else if (d === "repetir") hojaMovimiento({ tipo: t.type, monto: plano(t.amount), nombre: t.name, cat: t.category, cuenta: t.accountId });
+        else if (d === "repetir") hojaMovimiento({ tipo: t.type, monto: plano(t.amount), nombre: t.name, cat: t.category, cuenta: t.accountId, moneda: monedaTx(t) });
         else if (d === "borrar") {
           if (!confirm("¿Borrar " + (gasto ? "el gasto" : "el ingreso") + " \"" + t.name + "\" de " + plata(t.amount, mon) + "? El saldo de la cuenta se ajusta.")) return;
           borrarMov(t.id); cerrarHoja(); render(); aviso("Movimiento borrado.");
