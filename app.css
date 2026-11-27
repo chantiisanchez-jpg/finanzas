@@ -179,3 +179,32 @@ h2 { font-size: 19px; margin: 22px 0 10px; letter-spacing: -.2px; }
 .hero .monto2 { font-size: 24px; font-weight: 700; letter-spacing: -.5px; opacity: .92; }
 .hero .tenes { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 .hero .tenes span { background: rgba(255, 255, 255, .13); border-radius: 10px; padding: 4px 10px; font-size: 14px; font-weight: 700; }
+
+/* ---------- Pensado para que lo use cualquiera ---------- */
+.grandes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grandes .grande { background: var(--surface); border-radius: 20px; padding: 16px 14px; text-align: left; display: flex; flex-direction: column; gap: 4px; box-shadow: var(--sombra); min-height: 118px; }
+.grandes .grande .icono { width: 46px; height: 46px; margin-bottom: 6px; }
+.grandes .grande b { font-size: 18px; }
+.grandes .grande small { font-size: 13px; color: var(--muted); line-height: 1.3; }
+.grandes .grande:active { transform: scale(.98); }
+.fondo-dolar { background: rgba(14, 165, 233, .14); color: var(--info); }
+.fondo-neutro { background: var(--pcont); color: var(--primary); }
+.masAcciones { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 10px; padding: 14px 16px; border-radius: 16px; background: var(--surface); box-shadow: var(--sombra); color: var(--primary); font-weight: 600; text-align: left; }
+.masAcciones svg { width: 22px; height: 22px; flex: none; }
+.btnAyuda { width: 40px; height: 40px; border-radius: 50%; background: var(--surface); color: var(--primary); font-weight: 800; font-size: 19px; box-shadow: var(--sombra); }
+.pregunta { font-size: 17px; font-weight: 700; margin-top: 18px; }
+details.ayuda { background: var(--variant); border-radius: 14px; padding: 12px 14px; margin: 8px 0; }
+details.ayuda summary { font-weight: 700; font-size: 16px; cursor: pointer; }
+details.ayuda p { margin: 8px 0 2px; color: var(--fg); line-height: 1.45; }
+/* Guía de bienvenida */
+#guia { position: fixed; inset: 0; z-index: 30; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.guiaCaja { max-width: 420px; width: 100%; text-align: center; }
+.guiaCaja h2 { font-size: 28px; margin: 10px 0; }
+.guiaCaja p { font-size: 19px; line-height: 1.45; color: var(--fg); margin: 0 0 18px; }
+.guiaEmoji { font-size: 64px; }
+.guiaPuntos { display: flex; gap: 8px; justify-content: center; margin: 10px 0 6px; }
+.guiaPuntos span { width: 10px; height: 10px; border-radius: 50%; background: var(--outline); }
+.guiaPuntos span.sel { background: var(--primary); width: 26px; border-radius: 6px; }
+.guiaCaja .btn { font-size: 18px; padding: 17px; }
+/* Letra grande: todo un poco más grande y más fácil de tocar */
+html.grande #vista, html.grande .hoja, html.grande #nav { zoom: 1.15; }

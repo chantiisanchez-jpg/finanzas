@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 21:42";
+  var VERSION = "26/11 21:45";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -327,6 +327,7 @@
     var osc = data.themeMode === "DARK" || (data.themeMode !== "LIGHT" && oscuroSistema && oscuroSistema.matches);
     var raiz = document.documentElement;
     raiz.classList.toggle("oscuro", !!osc);
+    raiz.classList.toggle("grande", !!data.letraGrande);
     var p = PALETAS[data.colorTheme] || PALETAS.AZUL;
     var v = osc ? p.oscuro : p.claro;
     raiz.style.setProperty("--primary", v[0]);
@@ -409,6 +410,11 @@
       (mostrarFecha ? '<div class="muy-chico">' + fechaCorta(t.date) + "</div>" : "") + "</span></button>";
   }
 
+  function botonGrande(acc, tipo, fondo, icono, titulo, texto) {
+    return '<button class="grande" data-acc="' + acc + '"' + (tipo ? ' data-tipo="' + tipo + '"' : "") + '><span class="icono ' + fondo + '">' + icono + "</span>" +
+      "<b>" + titulo + "</b><small>" + texto + "</small></button>";
+  }
+
   function saludo() { var h = new Date().getHours(); return h >= 5 && h <= 11 ? "Buen día" : h >= 12 && h <= 19 ? "Buenas tardes" : "Buenas noches"; }
 
   /** Moneda elegida para el panel principal (botón $ / US$). */
@@ -444,7 +450,8 @@
     var pct = ing > 0 ? Math.min(100, gas / ing * 100) : (gas > 0 ? 100 : 0);
     var hayMes = data.transactions.some(function (t) { return mesDe(t.date) === mes; });
     var h = '<div class="entre" style="align-items:flex-start"><div><div class="fecha">' + fecha + "</div><h1>" + saludo() + "</h1></div>" +
-      '<button class="btnCuentas" data-acc="cuentas">' + ICON.billetera + "<span>Cuentas</span></button></div>";
+      '<div class="fila" style="gap:8px;margin-top:8px"><button class="btnAyuda" data-acc="ayuda" aria-label="Ayuda">?</button>' +
+      '<button class="btnCuentas" data-acc="cuentas" style="margin-top:0">' + ICON.billetera + "<span>Cuentas</span></button></div></div>";
     h += '<div class="hero"><div class="entre"><span style="opacity:.85">Patrimonio total</span><span class="fila" style="gap:8px">' +
       '<span class="moneda"><button data-acc="moneda" data-m="ARS" class="' + (mon === "ARS" ? "sel" : "") + '">$</button><button data-acc="moneda" data-m="USD" class="' + (mon === "USD" ? "sel" : "") + '">US$</button></span>' +
       '<button class="ojo" data-acc="privacidad">' + (data.privacy ? ICON.ojoNo : ICON.ojo) + "</button></span></div>" +
@@ -453,11 +460,15 @@
       '<div class="monto">' + plata(total, mon) + "</div>" +
       (pesos && dolares ? '<div class="tenes"><span>' + plata(pesos) + "</span><span>" + plata(dolares, "USD") + "</span></div>" : "") +
       '<div style="opacity:.8;font-size:13px;margin-top:6px">' + (pesos && dolares ? (mon === "USD" ? "Los pesos" : "Los dólares") + " se convierten al " : "") + textoDolar() + "</div>" +
-      '<div class="acciones"><button data-acc="nuevo" data-tipo="EXPENSE"><span class="c">' + ICON.gasto + "</span>Gasto</button>" +
-      '<button data-acc="nuevo" data-tipo="INCOME"><span class="c">' + ICON.ingreso + "</span>Ingreso</button>" +
-      '<button data-acc="divisas"><span class="c">' + ICON.divisas + "</span>Divisas</button>" +
-      '<button data-acc="transferir"><span class="c">' + ICON.transferir + "</span>Transferir</button>" +
-      '<button data-acc="importarExtracto"><span class="c">' + ICON.importar + "</span>Importar</button></div></div>";
+      "</div>";
+    // ¿Qué querés hacer? Botones grandes, con una línea que explica cada uno.
+    h += '<h2>¿Qué querés anotar?</h2><div class="grandes">' +
+      botonGrande("nuevo", "EXPENSE", "fondo-gasto", ICON.gasto, "Gasté", "Una compra o un pago") +
+      botonGrande("nuevo", "INCOME", "fondo-ingreso", ICON.ingreso, "Me entró plata", "Sueldo, una venta, un regalo") +
+      botonGrande("divisas", "", "fondo-dolar", ICON.divisas, "Dólares", "Compré o vendí dólares") +
+      botonGrande("transferir", "", "fondo-neutro", ICON.transferir, "Pasar plata", "De una cuenta a otra") +
+      "</div>" +
+      '<button class="masAcciones" data-acc="importarExtracto">' + ICON.importar + "<span>Cargar el resumen del banco (PDF)</span></button>";
     h += '<div class="tarjeta" style="margin-top:14px"><div class="entre"><b style="font-size:17px">Este mes</b><span class="chico">' + mesNombre(mes).split(" ")[0] + "</span></div>" +
       '<div class="dos" style="margin-top:12px"><div class="fila"><span class="icono fondo-ingreso">' + ICON.ingreso + '</span><div><div class="chico">Ingresos</div><b>' + plata(ing, mon) + "</b></div></div>" +
       '<div class="fila"><span class="icono fondo-gasto">' + ICON.gasto + '</span><div><div class="chico">Gastos</div><b>' + plata(gas, mon) + "</b></div></div></div>" +
@@ -466,7 +477,7 @@
         : '<div class="chico" style="margin-top:12px">Todavía no hay movimientos este mes.</div>') + "</div>";
     var ult = mezclar(data.transactions.slice(0, 6), (data.exchanges || []).slice(0, 6)).slice(0, 6);
     h += '<div class="entre"><h2>Últimos movimientos</h2>' + (ult.length ? '<button class="link" data-acc="tab" data-tab="actividad">Ver todos</button>' : "") + "</div>";
-    h += '<div class="lista">' + (ult.length ? ult.map(function (e) { return fila(e, true); }).join("") : '<div class="vacio">Todavía no cargaste movimientos.<br>Tocá <b>Gasto</b>, <b>Ingreso</b> o <b>Importar</b> para empezar.</div>') + "</div>";
+    h += '<div class="lista">' + (ult.length ? ult.map(function (e) { return fila(e, true); }).join("") : '<div class="vacio">Todavía no anotaste nada.<br>Tocá <b>«Gasté»</b> o <b>«Me entró plata»</b> para empezar.</div>') + "</div>";
     return h;
   }
 
@@ -725,6 +736,8 @@
       var p = PALETAS[k];
       return '<button data-acc="color" data-color="' + k + '" class="' + ((data.colorTheme || "AZUL") === k ? "sel" : "") + '"><span style="background:linear-gradient(135deg,' + p.claro[2] + "," + p.claro[3] + ')"></span>' + p.nombre + "</button>";
     }).join("") + "</div></div>";
+    h += '<div class="tarjeta" style="margin-top:14px;padding:4px 18px"><label class="interruptor"><span>Letra grande (más fácil de leer y tocar)</span><input type="checkbox" data-acc="letra"' + (data.letraGrande ? " checked" : "") + "></label></div>";
+    h += '<button class="btn suave" data-acc="verGuia">Ver la guía de bienvenida</button>';
     h += '<div class="tarjeta" style="margin-top:14px;padding:4px 18px"><label class="interruptor"><span>Ocultar montos</span><input type="checkbox" data-acc="privacidad"' + (data.privacy ? " checked" : "") + "></label></div>";
     h += '<h2>Dólar</h2><div class="tarjeta"><div class="chico" style="margin-bottom:8px">Cotización para convertir entre pesos y dólares. Se actualiza sola desde DolarApi (precio de venta).</div>' +
       '<div class="chips">' + DOLARES.map(function (o) {
@@ -854,9 +867,9 @@
       var gasto = st.tipo === "EXPENSE";
       var acento = gasto ? "var(--expense)" : "var(--income)";
       var h = (ed ? "<h3>Editar " + (gasto ? "gasto" : "ingreso") + "</h3>" :
-        '<div class="segmento" style="margin-bottom:6px"><button data-h="tipo" data-v="EXPENSE" class="' + (gasto ? "sel" : "") + '">Gasto</button><button data-h="tipo" data-v="INCOME" class="' + (gasto ? "" : "sel") + '">Ingreso</button></div>');
+        '<div class="segmento" style="margin-bottom:6px"><button data-h="tipo" data-v="EXPENSE" class="' + (gasto ? "sel" : "") + '">Gasté</button><button data-h="tipo" data-v="INCOME" class="' + (gasto ? "" : "sel") + '">Me entró plata</button></div>');
       h += '<div class="segmento chicoSeg" style="margin-top:8px"><button data-h="moneda" data-v="ARS" class="' + (st.moneda === "ARS" ? "sel" : "") + '">$ Pesos</button><button data-h="moneda" data-v="USD" class="' + (st.moneda === "USD" ? "sel" : "") + '">US$ Dólares</button></div>';
-      h += '<div class="montoGrande"><div class="chico">Monto en ' + (st.moneda === "USD" ? "dólares" : "pesos") + '</div><input id="hMonto" inputmode="decimal" placeholder="' + (st.moneda === "USD" ? "US$ 0" : "$ 0") + '" value="' + esc(st.monto) + '" autocomplete="off"><div class="chico" id="hCalc"></div></div>';
+      h += '<div class="montoGrande"><div class="pregunta" style="text-align:center">' + (gasto ? "¿Cuánto gastaste?" : "¿Cuánto te entró?") + '</div><div class="chico">En ' + (st.moneda === "USD" ? "dólares" : "pesos") + '. Escribí solo el número (ej: 1500)</div><input id="hMonto" inputmode="decimal" placeholder="' + (st.moneda === "USD" ? "US$ 0" : "$ 0") + '" value="' + esc(st.monto) + '" autocomplete="off"><div class="chico" id="hCalc"></div></div>';
       if (usaCotiz()) {
         var ac = cuenta(st.cuenta), convierte = ac && !esMixta(ac) && ac.currency !== st.moneda;
         h += '<div class="detalle" style="margin-top:4px"><div class="entre"><b style="font-size:14px">' + (convierte ? "Se pasa a " + (ac.currency === "USD" ? "dólares" : "pesos") + " con el dólar de ese día" : "Dólar de ese día") + "</b>" + '<span class="muy-chico">' + fechaLarga(st.fecha) + "</span></div>" +
@@ -867,18 +880,18 @@
             : '<label class="campo" style="background:var(--surface)"><span>Pesos por dólar</span><input id="hCotizManual" inputmode="decimal" value="' + esc(st.cotizManual) + '" placeholder="Ej: 1.650"></label>') +
           '<div class="chico" id="hEquiv" style="margin-top:6px"></div></div>';
       }
-      h += '<label class="campo"><span>Comercio o concepto</span><input id="hNombre" value="' + esc(st.nombre) + '" autocomplete="off" autocapitalize="sentences" placeholder="Ej: Supermercado"></label>';
-      h += '<div class="chico" style="margin:12px 0 8px;font-weight:600;color:var(--fg)">Categoría</div><div class="chips" style="--acento:' + acento + '">' +
+      h += '<div class="pregunta">' + (gasto ? "¿En qué?" : "¿De dónde vino?") + '</div><label class="campo" style="margin-top:6px"><span>' + (gasto ? "El comercio o lo que compraste" : "Quién te pagó o por qué") + '</span><input id="hNombre" value="' + esc(st.nombre) + '" autocomplete="off" autocapitalize="sentences" placeholder="' + (gasto ? "Ej: Supermercado, colectivo, luz" : "Ej: Sueldo, venta") + '"></label>';
+      h += '<div class="pregunta">¿De qué tipo es?</div><div class="chico" style="margin-bottom:8px">Tocá una. La app la recuerda para la próxima.</div><div class="chips" style="--acento:' + acento + '">' +
         categorias(st.tipo).map(function (c) { return '<button class="chip' + (c === st.cat ? " sel" : "") + '" data-h="cat" data-v="' + esc(c) + '"><span class="punto" style="background:' + colorCat(c) + '"></span>' + esc(c) + "</button>"; }).join("") +
         '<button class="chip" data-h="nuevaCat">+ Crear</button></div>';
-      h += '<label class="campo"><span>' + (gasto ? "Cuenta de débito" : "Cuenta de destino") + '</span><select id="hCuenta">' + data.accounts.map(function (a) {
+      h += '<div class="pregunta">' + (gasto ? "¿Con qué pagaste?" : "¿Dónde entró la plata?") + '</div><label class="campo" style="margin-top:6px"><span>Cuenta (tocá para cambiar)</span><select id="hCuenta">' + data.accounts.map(function (a) {
         return '<option value="' + esc(a.id) + '"' + (a.id === st.cuenta ? " selected" : "") + ">" + esc(a.name) + " · " + textoSaldo(a) + "</option>";
       }).join("") + "</select></label>";
-      h += '<div class="entre" style="margin-top:12px"><b class="chico" style="color:var(--fg)">Fecha · ' + fechaLarga(st.fecha) + '</b></div><div class="chips" style="margin-top:8px">' +
+      h += '<div class="pregunta">¿Cuándo?</div><div class="chico">' + fechaLarga(st.fecha) + '</div><div class="chips" style="margin-top:8px">' +
         '<button class="chip' + (st.fecha === hoy() ? " sel" : "") + '" data-h="fecha" data-v="' + hoy() + '">Hoy</button>' +
         '<button class="chip' + (st.fecha === sumarDias(hoy(), -1) ? " sel" : "") + '" data-h="fecha" data-v="' + sumarDias(hoy(), -1) + '">Ayer</button>' +
         '<label class="chip" style="position:relative">Elegir…<input id="hFecha" type="date" value="' + st.fecha + '" max="' + hoy() + '" style="position:absolute;inset:0;opacity:0;width:100%"></label></div>';
-      h += '<label class="campo"><span>Comentario (opcional)</span><textarea id="hComentario" rows="2">' + esc(st.comentario) + "</textarea></label>";
+      h += '<label class="campo"><span>Una nota, si querés (no hace falta)</span><textarea id="hComentario" rows="2">' + esc(st.comentario) + "</textarea></label>";
       if (st.items.length) {
         var suma = 0; st.items.forEach(function (i) { suma += i.amount; });
         h += '<div class="detalle"><b style="font-size:14px">Productos del ticket</b>' + st.items.map(function (i, k) {
@@ -1727,6 +1740,62 @@
       .catch(function () { st.error = "No se pudieron cargar los lectores de bancos. Revisá la conexión."; pintar(); });
   }
 
+  // ---------- Guía de bienvenida (la primera vez) y ayuda ----------
+
+  var PASOS_GUIA = [
+    ["👋", "¡Hola!", "Esta app te ayuda a saber <b>cuánta plata tenés</b> y <b>en qué la gastás</b>. Es fácil: solo tenés que anotar."],
+    ["🛒", "Cuando gastes", "Tocá el botón <b>«Gasté»</b>. Escribís cuánto, en qué, y tocás <b>Guardar</b>. Nada más."],
+    ["💵", "Cuando te entre plata", "El sueldo, una venta, un regalo: tocá <b>«Me entró plata»</b> y anotalo igual."],
+    ["👛", "Tus cuentas", "Efectivo, banco o billetera virtual. Las ves arriba a la derecha, en <b>«Cuentas»</b>. Si te perdés, tocá el <b>?</b>"]
+  ];
+  function guia(paso) {
+    paso = paso || 0;
+    var cont = document.getElementById("guia") || document.body.appendChild(Object.assign(document.createElement("div"), { id: "guia" }));
+    var ultimo = paso >= PASOS_GUIA.length;
+    var h = '<div class="guiaCaja">';
+    if (!ultimo) {
+      var p = PASOS_GUIA[paso];
+      h += '<div class="guiaEmoji">' + p[0] + "</div><h2>" + p[1] + "</h2><p>" + p[2] + "</p>" +
+        '<div class="guiaPuntos">' + PASOS_GUIA.map(function (_, i) { return '<span class="' + (i === paso ? "sel" : "") + '"></span>'; }).join("") + "</div>" +
+        '<button class="btn" data-g="sig">Siguiente</button><button class="btn suave" data-g="saltar">Saltar</button>';
+    } else {
+      h += '<div class="guiaEmoji">🔎</div><h2>¿Querés la letra más grande?</h2><p>Se ve todo más grande y es más fácil tocar los botones. Lo podés cambiar después en Ajustes.</p>' +
+        '<button class="btn" data-g="grande">Sí, más grande</button><button class="btn suave" data-g="normal">Así está bien</button>';
+    }
+    cont.innerHTML = h + "</div>";
+    cont.onclick = function (e) {
+      var b = e.target.closest ? e.target.closest("[data-g]") : null;
+      if (!b) return;
+      var g = b.getAttribute("data-g");
+      if (g === "sig") guia(paso + 1);
+      else if (g === "saltar") guia(PASOS_GUIA.length);
+      else {
+        if (g === "grande") data.letraGrande = true;
+        if (g === "normal") data.letraGrande = false;
+        data.guiaVista = true; guardar(); cont.remove(); render();
+      }
+    };
+  }
+
+  function hojaAyuda() {
+    var temas = [
+      ["Anotar un gasto", "En el inicio tocá <b>«Gasté»</b>. Escribí cuánto gastaste, en qué (por ejemplo «supermercado») y tocá <b>Guardar gasto</b>."],
+      ["Anotar plata que te entró", "Tocá <b>«Me entró plata»</b>. Sirve para el sueldo, una venta o un regalo."],
+      ["Ver en qué gastaste", "Abajo tocá <b>Actividad</b>. Ahí están todos tus gastos del mes y un gráfico por tipo. En <b>Informes</b> ves cuánto ahorraste."],
+      ["Corregir o borrar algo", "Tocá el movimiento en la lista. Se abre el detalle con <b>Editar</b> y <b>Borrar</b>."],
+      ["Tus cuentas", "Arriba a la derecha, <b>Cuentas</b>: ves cuánto hay en cada una y podés crear otra (banco, billetera)."],
+      ["Dólares", "El botón <b>Dólares</b> sirve si compraste o vendiste dólares. La cotización se busca sola."],
+      ["Pasar plata entre cuentas", "Si sacaste plata del banco o la pasaste a otra cuenta, tocá <b>«Pasar plata»</b>. No cuenta como gasto."],
+      ["Ocultar los montos", "Tocá el ojo 👁 en la tarjeta verde-azul de arriba y los números se tapan."]
+    ];
+    var h = "<h3>¿Cómo se usa?</h3>" + temas.map(function (t) {
+      return '<details class="ayuda"><summary>' + t[0] + "</summary><p>" + t[1] + "</p></details>";
+    }).join("") + '<button class="btn suave" data-y="guia">Ver la guía de bienvenida</button>';
+    abrirHoja(h, function (hoja) {
+      hoja.onclick = function (e) { if (e.target.closest && e.target.closest('[data-y="guia"]')) { cerrarHoja(); guia(0); } };
+    });
+  }
+
   // ---------- Toques ----------
 
   document.body.addEventListener("click", function (e) {
@@ -1736,6 +1805,9 @@
     var acc = b.getAttribute("data-acc");
     if (acc === "nuevo") hojaMovimiento({ tipo: b.getAttribute("data-tipo") });
     else if (acc === "transferir") hojaTransferir();
+    else if (acc === "ayuda") hojaAyuda();
+    else if (acc === "letra") { data.letraGrande = !data.letraGrande; guardar(); render(); }
+    else if (acc === "verGuia") guia(0);
     else if (acc === "divisas") hojaDivisas();
     else if (acc === "cambio") hojaCambio(b.getAttribute("data-id"));
     else if (acc === "cuentas") hojaCuentas();
@@ -1785,6 +1857,7 @@
   data = cargar();
   if (migrado) guardar();
   render();
+  if (!data.guiaVista) guia(0);
   actualizarDolar(false);
 
   if ("serviceWorker" in navigator && location.protocol === "https:") {
