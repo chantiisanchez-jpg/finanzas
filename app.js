@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 21:30";
+  var VERSION = "26/11 21:35";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -1133,7 +1133,9 @@
       var h = '<h3>Divisas</h3><div class="segmento"><button data-z="tipo" data-v="COMPRA" class="' + (compra ? "sel" : "") + '">Comprar dólares</button><button data-z="tipo" data-v="VENTA" class="' + (compra ? "" : "sel") + '">Vender dólares</button></div>';
       var conSaldo = cuentasDe().filter(function (a) { return saldo(a, compra ? "ARS" : "USD") > 0.005; });
       if (cuentasDe().length && !conSaldo.length) {
-        h += '<div class="chico" style="margin-top:14px">No tenés ' + (compra ? "pesos para comprar dólares" : "dólares para vender") + ". Cargá primero " + (compra ? "pesos" : "dólares") + " en una cuenta.</div>";
+        h += '<div class="chico" style="margin-top:14px">No tenés ' + (compra ? "pesos para comprar dólares" : "dólares para vender") + ". Así están tus cuentas:</div>" +
+          '<div class="detalle">' + data.accounts.map(function (a) { return '<div class="clave"><span>' + esc(a.name) + " (" + tipoCuenta(a) + ")</span><span>" + textoSaldo(a) + "</span></div>"; }).join("") + "</div>" +
+          '<div class="muy-chico" style="margin-top:8px">' + (compra ? "Cargá pesos en una cuenta" : "Para tener dólares en una cuenta mixta, al cargar el ingreso tocá <b>US$ Dólares</b> (si no, se guarda en pesos). Si los cargaste en pesos por error, abrí ese movimiento, tocá Editar y cambialo a US$.") + "</div>";
         hojaAbierta.innerHTML = '<div class="asa"></div>' + h; return;
       }
       if (!cuentasDe().length || !cuentasA().length) {
