@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 21:35";
+  var VERSION = "26/11 21:38";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -1105,7 +1105,9 @@
       });
       return;
     }
-    var st = { tipo: "COMPRA", de: null, a: null, usd: "", casa: data.usdAuto || "oficial", cotiz: null, cotizFecha: null, manual: "", estado: "", fecha: hoy() };
+    // Si no hay pesos para comprar pero sí dólares, arranca en "Vender dólares".
+    var hayPesos = conPesos.some(function (a) { return saldo(a, "ARS") > 0.005; }), hayDolares = conDolares.some(function (a) { return saldo(a, "USD") > 0.005; });
+    var st = { tipo: !hayPesos && hayDolares ? "VENTA" : "COMPRA", de: null, a: null, usd: "", casa: data.usdAuto || "oficial", cotiz: null, cotizFecha: null, manual: "", estado: "", fecha: hoy() };
     function cuentasDe() { return st.tipo === "COMPRA" ? conPesos : conDolares; }
     function cuentasA() { return st.tipo === "COMPRA" ? conDolares : conPesos; }
     function elegirCuentas() {
@@ -1136,11 +1138,11 @@
         h += '<div class="chico" style="margin-top:14px">No tenés ' + (compra ? "pesos para comprar dólares" : "dólares para vender") + ". Así están tus cuentas:</div>" +
           '<div class="detalle">' + data.accounts.map(function (a) { return '<div class="clave"><span>' + esc(a.name) + " (" + tipoCuenta(a) + ")</span><span>" + textoSaldo(a) + "</span></div>"; }).join("") + "</div>" +
           '<div class="muy-chico" style="margin-top:8px">' + (compra ? "Cargá pesos en una cuenta" : "Para tener dólares en una cuenta mixta, al cargar el ingreso tocá <b>US$ Dólares</b> (si no, se guarda en pesos). Si los cargaste en pesos por error, abrí ese movimiento, tocá Editar y cambialo a US$.") + "</div>";
-        hojaAbierta.innerHTML = '<div class="asa"></div>' + h; return;
+        hojaAbierta.innerHTML = '<div class="asa"></div>' + h; hojaAbierta.onclick = alTocar; return;
       }
       if (!cuentasDe().length || !cuentasA().length) {
         h += '<div class="chico" style="margin-top:12px">Necesitás una cuenta con ' + (compra ? "pesos" : "dólares") + " para " + (compra ? "pagar" : "vender") + ".</div>";
-        hojaAbierta.innerHTML = '<div class="asa"></div>' + h; return;
+        hojaAbierta.innerHTML = '<div class="asa"></div>' + h; hojaAbierta.onclick = alTocar; return;
       }
       h += '<div class="montoGrande"><div class="chico">Dólares que ' + (compra ? "comprás" : "vendés") + '</div><input id="zUsd" inputmode="decimal" placeholder="US$ 0" value="' + esc(st.usd) + '" autocomplete="off"></div>';
       h += '<label class="campo"><span>' + (compra ? "Pagás con (pesos de)" : "Salen los dólares de") + '</span><select id="zDe">' + opciones(cuentasDe(), st.de) + "</select></label>";
@@ -1177,6 +1179,15 @@
         if (st.casa === casa && st.fecha === fecha && lado() === l) { st.cotiz = r2(x.valor); st.cotizFecha = x.fecha; st.estado = ""; mostrar(); }
       }).catch(function () { if (st.casa === casa) { st.estado = "error"; mostrar(); } });
     }
+    /** Botones de la hoja (Comprar/Vender, tipo de dólar, fecha): andan también cuando se muestra solo un aviso. */
+    function alTocar(e) {
+      var b = e.target.closest ? e.target.closest("[data-z]") : null;
+      if (!b) return;
+      var z = b.getAttribute("data-z"), v = b.getAttribute("data-v");
+      if (z === "tipo") { st.tipo = v; st.cotiz = null; st.de = null; st.aTocado = false; pintar(); }
+      else if (z === "casa") { st.casa = v; st.cotiz = null; pintar(); }
+      else if (z === "fecha") { st.fecha = v; st.cotiz = null; pintar(); }
+    }
     function enganchar() {
       var hj = hojaAbierta;
       hj.querySelector("#zUsd").oninput = function (e) { st.usd = e.target.value; mostrar(); };
@@ -1185,14 +1196,7 @@
       hj.querySelector("#zFecha").onchange = function (e) { if (e.target.value) { st.fecha = e.target.value; st.cotiz = null; pintar(); } };
       var man = hj.querySelector("#zManual");
       if (man) man.oninput = function () { st.manual = man.value; mostrar(); };
-      hj.onclick = function (e) {
-        var b = e.target.closest ? e.target.closest("[data-z]") : null;
-        if (!b) return;
-        var z = b.getAttribute("data-z"), v = b.getAttribute("data-v");
-        if (z === "tipo") { st.tipo = v; st.cotiz = null; st.de = null; st.aTocado = false; pintar(); }
-        else if (z === "casa") { st.casa = v; st.cotiz = null; pintar(); }
-        else if (z === "fecha") { st.fecha = v; st.cotiz = null; pintar(); }
-      };
+      hj.onclick = alTocar;
       hj.querySelector("#zOk").onclick = function () {
         var v = leerMonto(st.usd), k = cotiz(), err = hj.querySelector("#zError");
         if (!(v > 0)) { err.textContent = "Poné cuántos dólares."; return; }
