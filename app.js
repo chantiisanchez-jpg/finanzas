@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 20:59";
+  var VERSION = "26/11 21:04";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -434,9 +434,14 @@
     h += '<div class="hero"><div class="entre"><span style="opacity:.85">Patrimonio total</span><span class="fila" style="gap:8px">' +
       '<span class="moneda"><button data-acc="moneda" data-m="ARS" class="' + (mon === "ARS" ? "sel" : "") + '">$</button><button data-acc="moneda" data-m="USD" class="' + (mon === "USD" ? "sel" : "") + '">US$</button></span>' +
       '<button class="ojo" data-acc="privacidad">' + (data.privacy ? ICON.ojoNo : ICON.ojo) + "</button></span></div>" +
-      '<div class="monto">' + plata(total, mon) + '</div><div style="opacity:.8;font-size:14px">' +
-      (dolares && pesos ? "Pesos " + plata(pesos) + " · Dólares " + plata(dolares, "USD") + "<br>" : "") +
-      (mon === "USD" ? (pesos ? "Pesos convertidos al " : "") : (dolares ? "Dólares convertidos al " : "")) + textoDolar() + "</div>" +
+      // Lo que tenés en cada moneda, tal cual (no cambia con el dólar). Primero la moneda elegida con $ / US$.
+      (function () {
+        var primera = mon === "USD" ? plata(dolares, "USD") : plata(pesos), segunda = mon === "USD" ? plata(pesos) : plata(dolares, "USD");
+        var hayOtra = mon === "USD" ? pesos : dolares;
+        if (!hayOtra) return '<div class="monto">' + plata(total, mon) + '</div><div style="opacity:.8;font-size:14px">' + textoDolar() + "</div>";
+        return '<div class="monto">' + primera + '</div><div class="monto2">+ ' + segunda + "</div>" +
+          '<div style="opacity:.8;font-size:13px;margin-top:4px">Todo junto ≈ ' + plata(total, mon) + " · " + textoDolar() + "</div>";
+      })() +
       '<div class="acciones"><button data-acc="nuevo" data-tipo="EXPENSE"><span class="c">' + ICON.gasto + "</span>Gasto</button>" +
       '<button data-acc="nuevo" data-tipo="INCOME"><span class="c">' + ICON.ingreso + "</span>Ingreso</button>" +
       '<button data-acc="transferir"><span class="c">' + ICON.transferir + "</span>Transferir</button>" +

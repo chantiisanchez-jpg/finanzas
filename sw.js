@@ -1,5 +1,5 @@
 // Primero baja la versión nueva (sin usar copias viejas del navegador); si no hay internet, abre la guardada.
-const CACHE = "nombre-app-html-v7";
+const CACHE = "nombre-app-html-v8";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(
