@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 21:16";
+  var VERSION = "26/11 21:25";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -436,14 +436,11 @@
     h += '<div class="hero"><div class="entre"><span style="opacity:.85">Patrimonio total</span><span class="fila" style="gap:8px">' +
       '<span class="moneda"><button data-acc="moneda" data-m="ARS" class="' + (mon === "ARS" ? "sel" : "") + '">$</button><button data-acc="moneda" data-m="USD" class="' + (mon === "USD" ? "sel" : "") + '">US$</button></span>' +
       '<button class="ojo" data-acc="privacidad">' + (data.privacy ? ICON.ojoNo : ICON.ojo) + "</button></span></div>" +
-      // Lo que tenés en cada moneda, tal cual (no cambia con el dólar). Primero la moneda elegida con $ / US$.
-      (function () {
-        var primera = mon === "USD" ? plata(dolares, "USD") : plata(pesos), segunda = mon === "USD" ? plata(pesos) : plata(dolares, "USD");
-        var hayOtra = mon === "USD" ? pesos : dolares;
-        if (!hayOtra) return '<div class="monto">' + plata(total, mon) + '</div><div style="opacity:.8;font-size:14px">' + textoDolar() + "</div>";
-        return '<div class="monto">' + primera + '</div><div class="monto2">+ ' + segunda + "</div>" +
-          '<div style="opacity:.8;font-size:13px;margin-top:4px">Todo junto ≈ ' + plata(total, mon) + " · " + textoDolar() + "</div>";
-      })() +
+      // Total en la moneda elegida con $ / US$ (lo de la otra moneda se convierte al dólar elegido).
+      // Debajo, lo que tenés de verdad en cada moneda: eso no cambia con el dólar.
+      '<div class="monto">' + plata(total, mon) + "</div>" +
+      (pesos && dolares ? '<div class="tenes"><span>' + plata(pesos) + "</span><span>" + plata(dolares, "USD") + "</span></div>" : "") +
+      '<div style="opacity:.8;font-size:13px;margin-top:6px">' + (pesos && dolares ? (mon === "USD" ? "Los pesos" : "Los dólares") + " se convierten al " : "") + textoDolar() + "</div>" +
       '<div class="acciones"><button data-acc="nuevo" data-tipo="EXPENSE"><span class="c">' + ICON.gasto + "</span>Gasto</button>" +
       '<button data-acc="nuevo" data-tipo="INCOME"><span class="c">' + ICON.ingreso + "</span>Ingreso</button>" +
       '<button data-acc="divisas"><span class="c">' + ICON.divisas + "</span>Divisas</button>" +
@@ -455,9 +452,9 @@
       (hayMes ? '<div class="barra"><div style="width:' + pct.toFixed(1) + '%"></div></div><div class="entre chico"><span>' +
         (ing > 0 ? "Gastaste el " + numero(gas / ing * 100, 0, false) + "% de tus ingresos" : "Sin ingresos este mes") + '</span><b class="' + (ing - gas >= 0 ? "ingreso" : "gasto") + '">' + plata(ing - gas, mon, true) + "</b></div>"
         : '<div class="chico" style="margin-top:12px">Todavía no hay movimientos este mes.</div>') + "</div>";
-    var ult = data.transactions.slice(0, 6);
-    h += '<div class="entre"><h2>Últimos movimientos</h2>' + (data.transactions.length ? '<button class="link" data-acc="tab" data-tab="actividad">Ver todos</button>' : "") + "</div>";
-    h += '<div class="lista">' + (ult.length ? ult.map(function (t) { return filaMov(t, true); }).join("") : '<div class="vacio">Todavía no cargaste movimientos.<br>Tocá <b>Gasto</b>, <b>Ingreso</b> o <b>Importar</b> para empezar.</div>') + "</div>";
+    var ult = mezclar(data.transactions.slice(0, 6), (data.exchanges || []).slice(0, 6)).slice(0, 6);
+    h += '<div class="entre"><h2>Últimos movimientos</h2>' + (ult.length ? '<button class="link" data-acc="tab" data-tab="actividad">Ver todos</button>' : "") + "</div>";
+    h += '<div class="lista">' + (ult.length ? ult.map(function (e) { return fila(e, true); }).join("") : '<div class="vacio">Todavía no cargaste movimientos.<br>Tocá <b>Gasto</b>, <b>Ingreso</b> o <b>Importar</b> para empezar.</div>') + "</div>";
     return h;
   }
 
@@ -473,26 +470,39 @@
     return s + "</svg>";
   }
 
+  /** Movimientos y operaciones de divisas juntos, del más nuevo al más viejo. */
+  function mezclar(txs, cambios) {
+    return txs.map(function (t) { return { date: t.date, orden: momento(t.id), t: t }; })
+      .concat(cambios.map(function (x) { return { date: x.date, orden: momento(x.id), fx: x }; }))
+      .sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : b.orden - a.orden; });
+  }
+  function fila(e, mostrarFecha) { return e.fx ? filaCambio(e.fx, mostrarFecha) : filaMov(e.t, mostrarFecha); }
   function movsActividad() {
     var q = normalizar(act.buscar.trim());
-    return data.transactions.filter(function (t) {
+    var txs = data.transactions.filter(function (t) {
       if (t.type !== act.tipo) return false;
       if (q) return normalizar((t.name || "") + " " + t.category + " " + (t.comment || "")).indexOf(q) >= 0;
       return mesDe(t.date) === act.mes;
     });
+    // Las compras/ventas de dólares se ven en la lista (no suman a gastos ni a ingresos).
+    var cambios = (data.exchanges || []).filter(function (x) {
+      if (q) return normalizar((x.type === "COMPRA" ? "compra de dolares" : "venta de dolares") + " divisas " + ((cuenta(x.fromId) || {}).name || "") + " " + ((cuenta(x.toId) || {}).name || "")).indexOf(q) >= 0;
+      return mesDe(x.date) === act.mes;
+    });
+    return mezclar(txs, cambios);
   }
   function listaActividad() {
     var lista = movsActividad();
     if (!lista.length) return '<div class="lista"><div class="vacio">' + (act.buscar ? "No hay movimientos que coincidan." : "No hay " + (act.tipo === "EXPENSE" ? "gastos" : "ingresos") + " en " + mesNombre(act.mes).toLowerCase() + ".") + "</div></div>";
     var h = "", dia = null, abierto = false;
-    lista.slice(0, act.ver).forEach(function (t) {
-      if (t.date !== dia) {
+    lista.slice(0, act.ver).forEach(function (e) {
+      if (e.date !== dia) {
         if (abierto) h += "</div>";
-        dia = t.date;
-        h += '<div class="dia">' + diaTitulo(t.date) + '</div><div class="lista">';
+        dia = e.date;
+        h += '<div class="dia">' + diaTitulo(e.date) + '</div><div class="lista">';
         abierto = true;
       }
-      h += filaMov(t, false);
+      h += fila(e, false);
     });
     if (abierto) h += "</div>";
     if (lista.length > act.ver) h += '<button class="mas" data-acc="verMas">Ver más (' + (lista.length - act.ver) + ")</button>";
@@ -1115,6 +1125,11 @@
       elegirCuentas();
       var compra = st.tipo === "COMPRA";
       var h = '<h3>Divisas</h3><div class="segmento"><button data-z="tipo" data-v="COMPRA" class="' + (compra ? "sel" : "") + '">Comprar dólares</button><button data-z="tipo" data-v="VENTA" class="' + (compra ? "" : "sel") + '">Vender dólares</button></div>';
+      var conSaldo = cuentasDe().filter(function (a) { return saldo(a, compra ? "ARS" : "USD") > 0.005; });
+      if (cuentasDe().length && !conSaldo.length) {
+        h += '<div class="chico" style="margin-top:14px">No tenés ' + (compra ? "pesos para comprar dólares" : "dólares para vender") + ". Cargá primero " + (compra ? "pesos" : "dólares") + " en una cuenta.</div>";
+        hojaAbierta.innerHTML = '<div class="asa"></div>' + h; return;
+      }
       if (!cuentasDe().length || !cuentasA().length) {
         h += '<div class="chico" style="margin-top:12px">Necesitás una cuenta con ' + (compra ? "pesos" : "dólares") + " para " + (compra ? "pagar" : "vender") + ".</div>";
         hojaAbierta.innerHTML = '<div class="asa"></div>' + h; return;
@@ -1140,8 +1155,12 @@
       if (!res) return;
       if (!(v > 0) || !(k > 0)) { res.innerHTML = '<span class="chico">Poné cuántos dólares y la cotización.</span>'; return; }
       var compra = st.tipo === "COMPRA", de = cuenta(st.de), a = cuenta(st.a), pesos = v * k;
+      var disp = saldo(de, compra ? "ARS" : "USD"), falta = (compra ? pesos : v) > disp + 0.005;
       res.innerHTML = '<div class="clave"><span>' + (compra ? "Pagás" : "Entregás") + '</span><span class="gasto">' + (compra ? plata(pesos) : plata(v, "USD")) + " de " + esc(de.name) + "</span></div>" +
-        '<div class="clave"><span>Recibís</span><span class="ingreso">' + (compra ? plata(v, "USD") : plata(pesos)) + " en " + esc(a.name) + "</span></div>";
+        '<div class="clave"><span>Recibís</span><span class="ingreso">' + (compra ? plata(v, "USD") : plata(pesos)) + " en " + esc(a.name) + "</span></div>" +
+        '<div class="muy-chico" style="' + (falta ? "color:var(--expense);font-weight:700" : "") + '">' + (falta ? "No alcanza: " : "Disponible: ") + plata(Math.max(0, disp), compra ? "ARS" : "USD") + " en " + esc(de.name) + "</div>";
+      var ok = hojaAbierta.querySelector("#zOk");
+      if (ok) ok.disabled = falta;
     }
     function pedir() {
       var casa = st.casa, fecha = st.fecha, l = lado();
@@ -1173,7 +1192,10 @@
         if (st.de === st.a && !esMixta(cuenta(st.de))) { err.textContent = "Elegí dos cuentas distintas."; return; }
         var compra = st.tipo === "COMPRA", de = cuenta(st.de), pesos = r2(v * k);
         var disponible = saldo(de, compra ? "ARS" : "USD"), necesita = compra ? pesos : v;
-        if (disponible < necesita - 0.005 && !confirm("En " + de.name + " hay " + plata(disponible, compra ? "ARS" : "USD") + " y la operación necesita " + plata(necesita, compra ? "ARS" : "USD") + ". ¿La registro igual?")) return;
+        if (disponible < necesita - 0.005) {
+          err.textContent = "No alcanza: en " + de.name + " hay " + plata(Math.max(0, disponible), compra ? "ARS" : "USD") + " y " + (compra ? "la compra necesita " : "querés vender ") + plata(necesita, compra ? "ARS" : "USD") + ".";
+          return;
+        }
         var x = { id: nuevoId("fx"), date: st.fecha, type: st.tipo, usd: r2(v), rate: r2(k), rateSource: st.casa || "manual", pesos: pesos, fromId: st.de, toId: st.a };
         data.exchanges = data.exchanges || [];
         data.exchanges.unshift(x);
@@ -1187,11 +1209,11 @@
     pintar();
   }
 
-  function filaCambio(x) {
+  function filaCambio(x, mostrarFecha) {
     var compra = x.type === "COMPRA", de = cuenta(x.fromId), a = cuenta(x.toId);
     return '<button class="mov" data-acc="cambio" data-id="' + esc(x.id) + '"><span class="icono" style="background:var(--pcont);color:var(--primary)">' + ICON.divisas + "</span>" +
       '<span class="txt"><div class="nom">' + (compra ? "Compra de dólares" : "Venta de dólares") + '</div><div class="sub">' + esc(de ? de.name : "—") + " → " + esc(a ? a.name : "—") + " · $" + numero(x.rate, 2, true) + "</div></span>" +
-      '<span class="der"><div class="m ' + (compra ? "ingreso" : "gasto") + '">' + plata(compra ? x.usd : -x.usd, "USD", compra) + '</div><div class="muy-chico">' + plata(compra ? -x.pesos : x.pesos, "ARS", !compra) + "</div></span></button>";
+      '<span class="der"><div class="m ' + (compra ? "ingreso" : "gasto") + '">' + plata(compra ? x.usd : -x.usd, "USD", compra) + '</div><div class="muy-chico">' + plata(compra ? -x.pesos : x.pesos, "ARS", !compra) + (mostrarFecha ? " · " + fechaCorta(x.date) : "") + "</div></span></button>";
   }
 
   function hojaCambio(id) {
