@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 21:38";
+  var VERSION = "26/11 21:42";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -169,10 +169,12 @@
 
   // ---------- Datos ----------
 
-  var data;
+  var data, migrado = false;
   function inicial() {
     return {
-      accounts: [{ id: nuevoId("acc"), name: "Efectivo", balance: 0, currency: "ARS", exclude: false, "default": true }],
+      // La primera cuenta (predeterminada) es mixta: pesos y dólares, cada uno con su saldo.
+      accounts: [{ id: nuevoId("acc"), name: "Principal", balance: 0, balanceUsd: 0, currency: "MIXTA", exclude: false, "default": true }],
+      migMixta: true,
       transactions: [], customExpense: [], customIncome: [], usdRate: 1280, monthlyInflation: 3.8,
       themeMode: "SYSTEM", privacy: false, appLock: false, categoryMemory: {}, ipcOverrides: {}, investments: [], portfolioValue: 0
     };
@@ -190,6 +192,16 @@
     d.categoryMemory = d.categoryMemory || {};
     if (typeof d.usdRate !== "number") d.usdRate = 1280;
     if (d.usdAuto === undefined) d.usdAuto = "oficial";
+    if (!d.migMixta) {
+      var pred = d.accounts.filter(function (a) { return a["default"]; })[0] || d.accounts[0];
+      if (pred && pred.currency === "ARS") {
+        d.transactions.forEach(function (t) { if (t.accountId === pred.id && !t.currency) t.currency = "ARS"; });
+        pred.currency = "MIXTA";
+        pred.balanceUsd = pred.balanceUsd || 0;
+      }
+      d.migMixta = true;
+      migrado = true;
+    }
     return d;
   }
   function guardar() {
@@ -1252,6 +1264,21 @@
 
   // ---------- Hoja: cuenta ----------
 
+  /** Cambia el tipo de cuenta (pesos, dólares o mixta). Devuelve un mensaje si no se puede sin perder plata. */
+  function cambiarTipo(a, nuevo) {
+    if (nuevo === a.currency) return null;
+    var viejo = a.currency;
+    if (viejo === "MIXTA" && nuevo === "ARS" && (a.balanceUsd || 0) > 0.005) return "Tiene " + plata(a.balanceUsd, "USD") + ": vendelos con Divisas o pasalos a otra cuenta antes.";
+    if (viejo === "MIXTA" && nuevo === "USD" && a.balance > 0.005) return "Tiene " + plata(a.balance) + " en pesos: pasalos a otra cuenta o compra dólares antes.";
+    if (viejo !== "MIXTA" && nuevo !== "MIXTA" && Math.abs(a.balance) > 0.005) return "Para pasarla de " + (viejo === "USD" ? "dólares a pesos" : "pesos a dólares") + " el saldo tiene que estar en 0 (o elegí Mixta).";
+    // Los movimientos viejos guardan su moneda, así no cambian de significado.
+    data.transactions.forEach(function (t) { if (t.accountId === a.id && !t.currency) t.currency = viejo === "MIXTA" ? "ARS" : viejo; });
+    if (nuevo === "MIXTA") { if (viejo === "USD") { a.balanceUsd = a.balance; a.balance = 0; } else a.balanceUsd = 0; }
+    else if (viejo === "MIXTA") { if (nuevo === "USD") a.balance = a.balanceUsd || 0; delete a.balanceUsd; }
+    a.currency = nuevo;
+    return null;
+  }
+
   function hojaCuenta(id) {
     var a = id ? cuenta(id) : null;
     if (!a) {
@@ -1292,12 +1319,22 @@
     var n = data.transactions.filter(function (t) { return t.accountId === a.id; }).length;
     var h2 = '<h3>' + esc(a.name) + '</h3><div style="font-size:' + (esMixta(a) ? 24 : 30) + 'px;font-weight:800">' + textoSaldo(a) + '</div><div class="chico">' + n + " movimientos · " + tipoCuenta(a) + "</div>" +
       '<label class="campo" style="margin-top:14px"><span>Nombre</span><input id="cNombre" value="' + esc(a.name) + '"></label>' +
+      '<div class="chico" style="margin:12px 4px 6px;font-weight:600;color:var(--fg)">Tipo de cuenta</div><div class="segmento" id="cTipo">' +
+      [["ARS", "Pesos"], ["USD", "Dólares"], ["MIXTA", "Mixta"]].map(function (o) { return '<button data-tc="' + o[0] + '" class="' + (a.currency === o[0] ? "sel" : "") + '">' + o[1] + "</button>"; }).join("") + "</div>" +
       '<label class="campo"><span>Ajustar saldo en ' + (a.currency === "USD" ? "dólares" : "pesos") + ' (si no coincide con el real)</span><input id="cSaldo" inputmode="decimal" value="' + esc(plano(a.balance)) + '"></label>' +
       (esMixta(a) ? '<label class="campo"><span>Ajustar saldo en dólares</span><input id="cSaldoUsd" inputmode="decimal" value="' + esc(plano(a.balanceUsd || 0)) + '"></label>' : "") +
       '<div style="padding:0 4px"><label class="interruptor"><span>Dejar fuera del patrimonio total</span><input type="checkbox" id="cExcluir"' + (a.exclude ? " checked" : "") + "></label>" +
       '<label class="interruptor"><span>Cuenta predeterminada</span><input type="checkbox" id="cPred"' + (a["default"] ? " checked disabled" : "") + "></label></div>" +
-      '<button class="btn" id="cOk">Guardar</button><button class="btn peligro" id="cBorrar">Borrar cuenta</button>';
+      '<div class="error" id="cError"></div><button class="btn" id="cOk">Guardar</button><button class="btn peligro" id="cBorrar">Borrar cuenta</button>';
+    var tipoNuevo = a.currency;
     abrirHoja(h2, function (hoja) {
+      hoja.querySelector("#cTipo").onclick = function (e) {
+        var b = e.target.closest ? e.target.closest("[data-tc]") : null;
+        if (!b) return;
+        tipoNuevo = b.getAttribute("data-tc");
+        var bs = hoja.querySelectorAll("[data-tc]");
+        for (var i = 0; i < bs.length; i++) bs[i].classList.toggle("sel", bs[i] === b);
+      };
       hoja.querySelector("#cOk").onclick = function () {
         var nombre = hoja.querySelector("#cNombre").value.trim();
         if (nombre) a.name = nombre;
@@ -1307,6 +1344,8 @@
         if (su) { var vu = leerMonto(su.value); if (vu != null) a.balanceUsd = r2(vu); }
         a.exclude = hoja.querySelector("#cExcluir").checked;
         if (hoja.querySelector("#cPred").checked) data.accounts.forEach(function (x) { x["default"] = x.id === a.id; });
+        var errTipo = cambiarTipo(a, tipoNuevo);
+        if (errTipo) { guardar(); hoja.querySelector("#cError").textContent = errTipo; return; }
         guardar(); cerrarHoja(); render(); aviso("Cuenta guardada.");
       };
       hoja.querySelector("#cBorrar").onclick = function () {
@@ -1744,6 +1783,7 @@
   });
 
   data = cargar();
+  if (migrado) guardar();
   render();
   actualizarDolar(false);
 
