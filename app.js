@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 21:49";
+  var VERSION = "26/11 21:53";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -311,12 +311,12 @@
   }
   function totalMes(tipo, mes) {
     var s = 0;
-    data.transactions.forEach(function (t) { if (t.type === tipo && mesDe(t.date) === mes) s += montoPesos(t); });
+    data.transactions.forEach(function (t) { if (t.type === tipo && mesDe(t.date) === mes && enFiltro(t)) s += montoPesos(t); });
     return s;
   }
   function porCategoria(tipo, mes) {
     var m = {};
-    data.transactions.forEach(function (t) { if (t.type === tipo && mesDe(t.date) === mes) m[t.category] = (m[t.category] || 0) + montoPesos(t); });
+    data.transactions.forEach(function (t) { if (t.type === tipo && mesDe(t.date) === mes && enFiltro(t)) m[t.category] = (m[t.category] || 0) + montoPesos(t); });
     return Object.keys(m).map(function (k) { return [k, m[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
   }
 
@@ -382,7 +382,14 @@
 
   var tab = "inicio";
   // Actividad e Informes están juntos: misma pestaña, mismo mes; "vista" elige movimientos o informes.
-  var act = { vista: "movs", tipo: "EXPENSE", mes: mesActual(), buscar: "", ver: 10 };
+  // cuenta: "TODO" (todas), "SIN_EXCL" (sin las excluidas del patrimonio) o el id de una cuenta.
+  var act = { vista: "movs", tipo: "EXPENSE", mes: mesActual(), buscar: "", ver: 10, cuenta: "TODO" };
+  function cuentaEnFiltro(id) {
+    if (act.cuenta === "TODO") return true;
+    if (act.cuenta === "SIN_EXCL") { var a = cuenta(id); return !(a && a.exclude); }
+    return id === act.cuenta;
+  }
+  function enFiltro(t) { return cuentaEnFiltro(t.accountId); }
   var vista = document.getElementById("vista");
 
   function render() {
@@ -457,8 +464,7 @@
       '<div class="acciones"><button data-acc="nuevo" data-tipo="EXPENSE"><span class="c">' + ICON.gasto + "</span>Gasto</button>" +
       '<button data-acc="nuevo" data-tipo="INCOME"><span class="c">' + ICON.ingreso + "</span>Ingreso</button>" +
       '<button data-acc="divisas"><span class="c">' + ICON.divisas + "</span>Divisas</button>" +
-      '<button data-acc="transferir"><span class="c">' + ICON.transferir + "</span>Transferir</button>" +
-      '<button data-acc="importarExtracto"><span class="c">' + ICON.importar + "</span>Importar</button></div></div>" +
+      '<button data-acc="transferir"><span class="c">' + ICON.transferir + "</span>Transferir</button></div></div>" +
       '<button class="masAcciones" data-acc="importarExtracto">' + ICON.importar + "<span>Cargar el resumen del banco (PDF)</span></button>";
     h += '<div class="tarjeta" style="margin-top:14px"><div class="entre"><b style="font-size:17px">Este mes</b><span class="chico">' + mesNombre(mes).split(" ")[0] + "</span></div>" +
       '<div class="dos" style="margin-top:12px"><div class="fila"><span class="icono fondo-ingreso">' + ICON.ingreso + '</span><div><div class="chico">Ingresos</div><b>' + plata(ing, mon) + "</b></div></div>" +
@@ -494,12 +500,13 @@
   function movsActividad() {
     var q = normalizar(act.buscar.trim());
     var txs = data.transactions.filter(function (t) {
-      if (t.type !== act.tipo) return false;
+      if (t.type !== act.tipo || !enFiltro(t)) return false;
       if (q) return normalizar((t.name || "") + " " + t.category + " " + (t.comment || "")).indexOf(q) >= 0;
       return mesDe(t.date) === act.mes;
     });
     // Las compras/ventas de dólares se ven en la lista (no suman a gastos ni a ingresos).
     var cambios = (data.exchanges || []).filter(function (x) {
+      if (!cuentaEnFiltro(x.fromId) && !cuentaEnFiltro(x.toId)) return false;
       if (q) return normalizar((x.type === "COMPRA" ? "compra de dolares" : "venta de dolares") + " divisas " + ((cuenta(x.fromId) || {}).name || "") + " " + ((cuenta(x.toId) || {}).name || "")).indexOf(q) >= 0;
       return mesDe(x.date) === act.mes;
     });
@@ -523,9 +530,15 @@
     return h;
   }
   function vistaActividad() {
-    var h = '<div class="entre"><h1>Actividad</h1><button class="btnCuentas" data-acc="importarExtracto">' + ICON.importar + "<span>Importar</span></button></div>";
+    if (act.cuenta !== "TODO" && act.cuenta !== "SIN_EXCL" && !cuenta(act.cuenta)) act.cuenta = "TODO";
+    var h = "<h1>Actividad</h1>";
     h += '<div class="segmento"><button data-acc="actVista" data-v="movs" class="' + (act.vista === "movs" ? "sel" : "") + '">Movimientos</button><button data-acc="actVista" data-v="informes" class="' + (act.vista === "informes" ? "sel" : "") + '">Informes</button></div>';
     h += '<div class="mes" style="margin-top:12px"><button data-acc="actMes" data-n="-1">‹</button><span>' + mesNombre(act.mes) + '</span><button data-acc="actMes" data-n="1"' + (act.mes >= mesActual() ? " disabled" : "") + ">›</button></div>";
+    var hayExcluidas = data.accounts.some(function (a) { return a.exclude; });
+    var opciones = [["TODO", "Total"]].concat(hayExcluidas ? [["SIN_EXCL", "Total sin excluidas"]] : []).concat(data.accounts.map(function (a) { return [a.id, a.name]; }));
+    h += '<div class="filtroCuentas">' + opciones.map(function (o) {
+      return '<button class="chip' + (act.cuenta === o[0] ? " sel" : "") + '" data-acc="actCuenta" data-v="' + esc(o[0]) + '">' + esc(o[1]) + "</button>";
+    }).join("") + "</div>";
     return h + (act.vista === "informes" ? cuerpoInformes() : cuerpoMovimientos());
   }
 
@@ -555,7 +568,7 @@
   }
 
   function cuerpoDivisas() {
-    var lista = (data.exchanges || []).filter(function (x) { return mesDe(x.date) === act.mes; });
+    var lista = (data.exchanges || []).filter(function (x) { return mesDe(x.date) === act.mes && (cuentaEnFiltro(x.fromId) || cuentaEnFiltro(x.toId)); });
     var comprados = 0, vendidos = 0, pagado = 0, cobrado = 0;
     lista.forEach(function (x) { if (x.type === "COMPRA") { comprados += x.usd; pagado += x.pesos; } else { vendidos += x.usd; cobrado += x.pesos; } });
     var h = segTipo();
@@ -571,7 +584,7 @@
   function cuerpoInformes() {
     var mes = act.mes, ant = mesMover(mes, -1);
     var ing = totalMes("INCOME", mes), gas = totalMes("EXPENSE", mes), gasAnt = totalMes("EXPENSE", ant);
-    var nIng = data.transactions.filter(function (t) { return t.type === "INCOME" && mesDe(t.date) === mes; }).length;
+    var nIng = data.transactions.filter(function (t) { return t.type === "INCOME" && mesDe(t.date) === mes && enFiltro(t); }).length;
     var cats = porCategoria("EXPENSE", mes);
     var ahorro = ing - gas;
     var h = '<div class="dos" style="margin-top:12px">' +
@@ -602,10 +615,11 @@
   /** Dólares que tenés según esos movimientos, con el costo promedio (lo que pagaste por cada uno). */
   /** Movimientos de dólares (ingresos/gastos en US$ en cuentas con dólares y compras/ventas de divisas), por fecha. */
   function eventosDolares(fecha) {
-    var ev = data.transactions.filter(function (t) { return esDeDolares(t) && t.date <= fecha; })
+    var ev = data.transactions.filter(function (t) { return esDeDolares(t) && t.date <= fecha && enFiltro(t); })
       .map(function (t) { return { fecha: t.date, orden: momento(t.id), entra: t.type === "INCOME", usd: t.amount, cotiz: cotizTx(t) }; });
     (data.exchanges || []).forEach(function (x) {
-      if (x.date <= fecha) ev.push({ fecha: x.date, orden: momento(x.id), entra: x.type === "COMPRA", usd: x.usd, cotiz: x.rate });
+      // Una compra suma dólares a la cuenta que los recibe; una venta los saca de la que los entrega.
+      if (x.date <= fecha && cuentaEnFiltro(x.type === "COMPRA" ? x.toId : x.fromId)) ev.push({ fecha: x.date, orden: momento(x.id), entra: x.type === "COMPRA", usd: x.usd, cotiz: x.rate });
     });
     // Por fecha y, el mismo día, en el orden en que se cargaron (el id lleva la hora de carga).
     return ev.sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : a.orden - b.orden; });
@@ -624,7 +638,7 @@
   function seccionAhorro(mes) {
     var fin = mes + "-" + String(diasDelMes(mes)).padStart(2, "0");
     var ing = 0, gas = 0;
-    data.transactions.forEach(function (t) { if (t.date <= fin) { if (t.type === "INCOME") ing += montoPesos(t); else gas += montoPesos(t); } });
+    data.transactions.forEach(function (t) { if (t.date <= fin && enFiltro(t)) { if (t.type === "INCOME") ing += montoPesos(t); else gas += montoPesos(t); } });
     var acum = ing - gas;
     var h = '<h2>Ahorro y dólares</h2><div class="tarjeta"><div class="chico">Ahorro acumulado (ingresos menos gastos, hasta ' + mesNombre(mes).toLowerCase() + ")</div>" +
       '<div class="kpi"><div class="valor ' + (acum >= 0 ? "ingreso" : "gasto") + '">' + plata(acum, "ARS", true) + '</div></div><div class="muy-chico">≈ ' + plata(acum / data.usdRate, "USD", true) + " al dólar de hoy</div>";
@@ -1772,6 +1786,7 @@
     else if (acc === "tab") { tab = b.getAttribute("data-tab"); window.scrollTo(0, 0); render(); }
     else if (acc === "privacidad") { if (b.tagName !== "INPUT") e.preventDefault(); data.privacy = !data.privacy; guardar(); render(); }
     else if (acc === "actTipo") { act.tipo = b.getAttribute("data-tipo"); act.ver = 10; render(); }
+    else if (acc === "actCuenta") { act.cuenta = b.getAttribute("data-v"); act.ver = 10; render(); }
     else if (acc === "actMes") { act.mes = mesMover(act.mes, +b.getAttribute("data-n")); act.ver = 10; render(); }
     else if (acc === "verMas") { act.ver += 50; document.getElementById("listaAct").innerHTML = listaActividad(); }
     else if (acc === "tema") { data.themeMode = b.getAttribute("data-modo"); guardar(); render(); }
