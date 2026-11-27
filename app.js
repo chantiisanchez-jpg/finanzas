@@ -9,7 +9,7 @@
   "use strict";
 
   var CLAVE = "finanzas_pro.data_v1";
-  var VERSION = "26/11 21:25";
+  var VERSION = "26/11 21:30";
   var CAT_GASTO = ["Alimentos", "Transporte", "Servicios", "Salud", "Entretenimiento", "Educación", "Hogar", "Otros"];
   var CAT_INGRESO = ["Sueldo", "Honorarios", "Ventas", "Inversiones", "Otros"];
   var COLORES = {
@@ -1109,11 +1109,17 @@
     function cuentasDe() { return st.tipo === "COMPRA" ? conPesos : conDolares; }
     function cuentasA() { return st.tipo === "COMPRA" ? conDolares : conPesos; }
     function elegirCuentas() {
-      var de = cuentasDe(), a = cuentasA();
-      if (!de.some(function (x) { return x.id === st.de; })) st.de = (de.filter(function (x) { return x["default"]; })[0] || de[0] || {}).id;
-      if (!a.some(function (x) { return x.id === st.a; })) {
-        var misma = a.filter(function (x) { return x.id === st.de; })[0];
-        st.a = (misma || a.filter(function (x) { return x.id !== st.de; })[0] || a[0] || {}).id;
+      var de = cuentasDe(), a = cuentasA(), mon = st.tipo === "COMPRA" ? "ARS" : "USD";
+      if (!de.some(function (x) { return x.id === st.de; })) {
+        // Por defecto, la cuenta que tiene esa moneda (la predeterminada si tiene; si no, la que más tiene).
+        var con = de.filter(function (x) { return saldo(x, mon) > 0.005; }).sort(function (p, q) { return saldo(q, mon) - saldo(p, mon); });
+        st.de = ((con.filter(function (x) { return x["default"]; })[0]) || con[0] || de[0] || {}).id;
+        st.aTocado = false;
+      }
+      if (!st.aTocado || !a.some(function (x) { return x.id === st.a; })) {
+        // Si sale de una mixta, por defecto va a la misma (de su parte en una moneda a la otra).
+        var misma = esMixta(cuenta(st.de)) ? a.filter(function (x) { return x.id === st.de; })[0] : null;
+        st.a = (misma || a.filter(function (x) { return x.id !== st.de && x["default"]; })[0] || a.filter(function (x) { return x.id !== st.de; })[0] || a[0] || {}).id;
       }
     }
     function lado() { return st.tipo === "COMPRA" ? "venta" : "compra"; }
@@ -1172,8 +1178,8 @@
     function enganchar() {
       var hj = hojaAbierta;
       hj.querySelector("#zUsd").oninput = function (e) { st.usd = e.target.value; mostrar(); };
-      hj.querySelector("#zDe").onchange = function (e) { st.de = e.target.value; mostrar(); };
-      hj.querySelector("#zA").onchange = function (e) { st.a = e.target.value; mostrar(); };
+      hj.querySelector("#zDe").onchange = function (e) { st.de = e.target.value; pintar(); };
+      hj.querySelector("#zA").onchange = function (e) { st.a = e.target.value; st.aTocado = true; mostrar(); };
       hj.querySelector("#zFecha").onchange = function (e) { if (e.target.value) { st.fecha = e.target.value; st.cotiz = null; pintar(); } };
       var man = hj.querySelector("#zManual");
       if (man) man.oninput = function () { st.manual = man.value; mostrar(); };
@@ -1181,7 +1187,7 @@
         var b = e.target.closest ? e.target.closest("[data-z]") : null;
         if (!b) return;
         var z = b.getAttribute("data-z"), v = b.getAttribute("data-v");
-        if (z === "tipo") { st.tipo = v; st.cotiz = null; pintar(); }
+        if (z === "tipo") { st.tipo = v; st.cotiz = null; st.de = null; st.aTocado = false; pintar(); }
         else if (z === "casa") { st.casa = v; st.cotiz = null; pintar(); }
         else if (z === "fecha") { st.fecha = v; st.cotiz = null; pintar(); }
       };
